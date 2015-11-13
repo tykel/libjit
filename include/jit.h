@@ -155,6 +155,8 @@ struct jit_instruction {
     struct jit_instruction *next;
 };
 
+struct jit_emitter;
+
 struct jit_state {
     size_t blk_ni;          // Number of instructions in the basic block.
     size_t blk_nb;          // Number of bytes in the basic block.
@@ -170,6 +172,8 @@ struct jit_state {
     struct jit_instruction *__g_pipool;
     size_t __g_nipool;
     size_t __g_nicur;
+
+    struct jit_emitter *p_emitter;
 };
 
 /* Provide an alternative typedef for those who don't like typing struct. */
@@ -202,6 +206,10 @@ jit_register jit_register_new(struct jit_state *s);
 /* Append a given instruction to the state's instrcution sequence. */
 
 struct jit_instruction* jit_instruction_new(struct jit_state *s);
+
+jit_error jit_create_emitter(struct jit_state *s);
+
+jit_error jit_destroy_emitter(struct jit_state *s);
 
 jit_error jit_emit_move(struct jit_state *s, struct jit_instruction *i);
 jit_error jit_emit_ret(struct jit_state *s, struct jit_instruction *i);

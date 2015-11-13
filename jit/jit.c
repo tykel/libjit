@@ -27,7 +27,7 @@
 
 #include "jit.h"
 
-#define FAILPATH(err) {e=(err);goto exit;}
+#define FAILPATH(err) {e=(err);goto l_exit;}
 
 #define __JIT_POOL_ALLOC 1024
 
@@ -52,13 +52,16 @@ jit_create(struct jit_state **s, jit_flags flags)
         FAILPATH(JIT_ERROR_MALLOC);
     }
 
-exit:
+    e = jit_create_emitter(*s);
+
+l_exit:
     return e;
 }
 
 jit_error
 jit_destroy(struct jit_state *s)
 {
+    jit_destroy_emitter(s);
     free(s->__g_pipool);
     free(s);
 
@@ -88,7 +91,7 @@ jit_instruction_new(struct jit_state *s)
         s->__g_pipool = realloc(s->__g_pipool,
                 s->__g_nipool * sizeof(__JIT_POOL_ALLOC));
         if(s->__g_pipool == NULL) {
-            goto exit;
+            goto l_exit;
         }
     }
     i = &s->__g_pipool[s->__g_nicur++];
@@ -97,7 +100,7 @@ jit_instruction_new(struct jit_state *s)
         s->p_icur->next = i;
     }
 
-exit:
+l_exit:
     return i;
 }
 

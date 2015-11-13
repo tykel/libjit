@@ -1,5 +1,6 @@
 include/license-header.h
 jit/*.o
 libjit.so
+testjit
 tags
 types_c.taghl
