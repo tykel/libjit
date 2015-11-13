@@ -23,6 +23,8 @@
 #ifndef _JIT_H_
 #define _JIT_H_
 
+#include <stddef.h>
+
 #if __STDC_VERSION__ >= 199901L
 #include <stdint.h>
 #else
@@ -45,7 +47,6 @@ typedef uint8_t unsigned char;
 
 typedef uint32_t jit_error;
 
-typedef int32_t jit_register;
 typedef intptr_t jit_memory;
 
 
@@ -62,13 +63,20 @@ enum e_jit_errors {
     JIT_SUCCESS = 0,
     JIT_ERROR_UNKNOWN,
     JIT_ERROR_NO_MORE_VREGS,    // Somehow, we used over 2 billion jit registers
+    JIT_ERROR_NULL_PTR,
+    JIT_ERROR_MALLOC,
     JIT_MAX,
 };
+
+#define SUCCESS(x) ((x) == JIT_SUCCESS)
+#define FAILURE(x) (!SUCCESS(x))
 
 enum e_jit_flags {
     JIT_FLAG_NONE = 0,
     JIT_FLAG_MAX = (1 << 31),
 };
+
+typedef uint32_t jit_flags;
 
 enum e_jit_operand {
     JIT_OPERAND_INVALID = -1,
@@ -78,12 +86,16 @@ enum e_jit_operand {
     JIT_OPERAND_IMMPTR,
 };
 
+typedef enum e_jit_operand jit_operand;
+
 /* Virtual registers in the jit are (near) infinite, and monotonically increase.
  *
  * Valid jit register indexes number from 0 to INT32_MAX. */
 enum e_jit_register {
     JIT_REGISTER_INVALID = -1,
 };
+
+typedef enum e_jit_register jit_register;
 
 enum e_jit_op {
     JIT_OP_INVALID = -1,
@@ -104,6 +116,8 @@ enum e_jit_op {
     JIT_OP_RET,
 };
 
+typedef enum e_jit_op jit_op;
+
 struct jit_pointer {
     intptr_t base;
     size_t index;
@@ -122,18 +136,23 @@ union u_jit_operand_union {
     struct jit_pointer ptr;
 };
 
+typedef union u_jit_operand_union jit_operand_union;
+
+struct jit_instruction;
 struct jit_instruction {
-    e_jit_op op;
+    jit_op op;
 
-    e_jit_operand in1_type;
-    e_jit_operand in2_type;
-    e_jit_operand out_type;
+    jit_operand in1_type;
+    jit_operand in2_type;
+    jit_operand out_type;
 
-    u_jit_operand_union in1;
-    u_jit_operand_union in2;
-    u_jit_operand_union out;
+    jit_operand_union in1;
+    jit_operand_union in2;
+    jit_operand_union out;
 
     uintptr_t branch_dest;
+
+    struct jit_instruction *next;
 };
 
 struct jit_state {
@@ -145,28 +164,46 @@ struct jit_state {
     uint8_t *p_bufcur;      // Pointer to current location in code buffer.
 
     int32_t regcur;         // Current highest jit register index.
+    struct jit_instruction *p_icur;  // Last instruction added
+
+    // Internal use
+    struct jit_instruction *__g_pipool;
+    size_t __g_nipool;
+    size_t __g_nicur;
 };
 
 /* Provide an alternative typedef for those who don't like typing struct. */
 typedef struct jit_state jit_state;
 
+
 /* Allocate and initialize a new jit state in pointer s, with options defined
  * in flags. */
-jit_error jit_create(struct jit_state **s, uint32_t flags);
+
+jit_error jit_create(struct jit_state **s, jit_flags flags);
+
 
 /* Deallocate the jit state in pointer s. */
+
 jit_error jit_destroy(struct jit_state *s);
 
+
 /* Set the jit state to start a block and provide the output code buffer. */
+
 jit_error jit_begin_block(struct jit_state *s, void *buf);
 
 jit_error jit_end_block(struct jit_state *s);
 
+
 /* Allocate a new register and return its index. */
+
 jit_register jit_register_new(struct jit_state *s);
 
-/* Return a new instruction, allocated if necessary. */
-jit_instruction* jit_instruction_new(struct jit_state *s);
 
+/* Append a given instruction to the state's instrcution sequence. */
+
+struct jit_instruction* jit_instruction_new(struct jit_state *s);
+
+jit_error jit_emit_move(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_ret(struct jit_state *s, struct jit_instruction *i);
 
 #endif

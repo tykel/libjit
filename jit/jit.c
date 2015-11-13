@@ -1,0 +1,122 @@
+/*
+ * Copyright (c) 2015 Tim Kelsall.
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "jit.h"
+
+#define FAILPATH(err) {e=(err);goto exit;}
+
+#define __JIT_POOL_ALLOC 1024
+
+
+jit_error
+jit_create(struct jit_state **s, jit_flags flags)
+{
+    jit_error e = JIT_SUCCESS;
+
+    if(s == NULL) {
+        FAILPATH(JIT_ERROR_NULL_PTR);
+    }
+
+    *s = calloc(1, sizeof(struct jit_state));
+    if(*s == NULL) {
+        FAILPATH(JIT_ERROR_MALLOC);
+    }
+
+    (*s)->__g_pipool = calloc(__JIT_POOL_ALLOC,
+            sizeof(struct jit_instruction));
+    if((*s)->__g_pipool == NULL) {
+        FAILPATH(JIT_ERROR_MALLOC);
+    }
+
+exit:
+    return e;
+}
+
+jit_error
+jit_destroy(struct jit_state *s)
+{
+    free(s->__g_pipool);
+    free(s);
+
+    return JIT_SUCCESS;
+}
+
+jit_register
+jit_register_new(struct jit_state *s)
+{
+    jit_register r = JIT_REGISTER_INVALID;
+
+    if(s->regcur < INT32_MAX) { 
+        r  = s->regcur++;
+    }
+
+    return r;
+}
+
+struct jit_instruction*
+jit_instruction_new(struct jit_state *s)
+{
+    struct jit_instruction *i = NULL;
+
+    // Grow the pool if needed.
+    if(s->__g_nicur == s->__g_nipool) {
+        s->__g_nipool += __JIT_POOL_ALLOC;
+        s->__g_pipool = realloc(s->__g_pipool,
+                s->__g_nipool * sizeof(__JIT_POOL_ALLOC));
+        if(s->__g_pipool == NULL) {
+            goto exit;
+        }
+    }
+    i = &s->__g_pipool[s->__g_nicur++];
+    
+    if(s->p_icur) {
+        s->p_icur->next = i;
+    }
+
+exit:
+    return i;
+}
+
+jit_error
+jit_begin_block(struct jit_state *s, void *buf)
+{
+    jit_error e = JIT_SUCCESS;
+
+    s->p_bufstart = s->p_bufcur = buf;
+    s->blk_ni = s->blk_nb = 0;
+    s->blk_is = s->__g_pipool;
+    
+    return e;
+}
+
+jit_error
+jit_end_block(struct jit_state *s)
+{
+    jit_error e = JIT_SUCCESS;
+
+    return e;
+}
