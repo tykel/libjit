@@ -37,9 +37,64 @@ enum e_jit_host_register {
 
 typedef enum e_jit_host_register jit_host_register;
 
+static const char *g_opsz[JIT_NUM_OPS] = {
+    "nop", "mov", "add", "sub", "mul", "div", "shl", "shr", "and",
+    "or", "xor", "call", "jump", "jx", "ret"
+};
+
 static const char *g_hostregsz[NUM_HOST_REGS] = {
     "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
     "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+};
+
+typedef uint8_t* (*pfn_e_r_to_r)(uint8_t *p, jit_host_register rin, jit_host_register rout);
+typedef uint8_t* (*pfn_e_r_r_to_r)(uint8_t *p, jit_host_register rin1, jit_host_register rin2, jit_host_register rout);
+typedef uint8_t* (*pfn_e_imm32_r_to_r)(uint8_t *p, int32_t imm, jit_host_register rin, jit_host_register rout);
+typedef uint8_t* (*pfn_e_imm32_to_r)(uint8_t *p, int32_t imm, jit_host_register rout);
+
+uint8_t* jit_emit__mov_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_register reg);
+uint8_t* jit_emit__mov_reg_to_reg(uint8_t *p, jit_host_register regin, jit_host_register regto);
+uint8_t* jit_emit__add_reg_to_reg(uint8_t *p, jit_host_register regin, jit_host_register regout);
+uint8_t* jit_emit__add_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_register regout);
+uint8_t* jit_emit__sub_reg_to_reg(uint8_t *p, jit_host_register regin, jit_host_register regout);
+uint8_t* jit_emit__sub_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_register regout);
+
+static const pfn_e_r_to_r g_e_r_to_r[JIT_NUM_OPS] = {
+    NULL,
+    jit_emit__mov_reg_to_reg,
+    jit_emit__add_reg_to_reg,
+    jit_emit__sub_reg_to_reg,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+};
+
+static const pfn_e_imm32_to_r g_e_imm32_to_r[JIT_NUM_OPS] = {
+    NULL,
+    jit_emit__mov_imm32_to_reg,
+    jit_emit__add_imm32_to_reg,
+    jit_emit__sub_imm32_to_reg,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
 };
 
 /* The x86_64 variant of the emitter reference in jit_state. */
@@ -47,10 +102,32 @@ struct jit_emitter {
     jit_register host_regmap[NUM_HOST_REGS];
 };
 
-#define REX(w,r,x,n) (0x40 | (!!(w)<<3) | (!!(r)<<2) | (!!(x)<<1) | (!!(n)))
+#define REX(w,r,x,b) (0x40 | (!!(w)<<3) | (!!(r)<<2) | (!!(x)<<1) | (!!(b)))
 #define MODRM(mod, reg, rm) ((((mod) & 3) << 6) | (((reg) & 7) << 3) | (rm))
 
-#define JIT_HOST__DISP32 5
+#define NEED_REX(r) ((r)&0x8)
+#define HOSTREG(r) ((r)&0x7)
+
+#define REX_W REX(1,0,0,0)
+#define REX_R REX(0,1,0,0)
+#define REX_X REX(0,0,1,0)
+#define REX_B REX(0,0,0,1)
+#define REX_WB REX(1,0,0,1)
+
+#define MOD_RIP_SIB 0
+#define MOD_DISP8 1
+#define MOD_DISP32 2
+#define MOD_REGDIRECT 3
+#define RM_DISP32 5
+
+#define OX_ADD 0
+#define OX_OR  1
+#define OX_ADC 2
+#define OX_SBB 3
+#define OX_AND 4
+#define OX_SUB 5
+#define OX_XOR 6
+#define OX_CMP 7
 
 jit_error
 jit_create_emitter(struct jit_state *s)
@@ -111,9 +188,6 @@ l_exit:
     return hostreg;
 }
 
-uint8_t* jit_emit__mov_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_register reg);
-uint8_t* jit_emit__mov_reg_to_reg(uint8_t *p, jit_host_register regin, jit_host_register regto);
-
 jit_error
 jit_emit_move(struct jit_state *s, struct jit_instruction *i)
 {
@@ -151,11 +225,8 @@ l_exit:
     return e;
 }
 
-uint8_t* jit_emit__add_reg_to_reg(uint8_t *p, jit_host_register regin, jit_host_register regout);
-uint8_t* jit_emit__add_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_register regout);
-
 jit_error
-jit_emit_add(struct jit_state *s, struct jit_instruction *i)
+jit_emit_arith(struct jit_state *s, struct jit_instruction *i)
 {
     size_t n;
     jit_error e = JIT_SUCCESS;
@@ -181,70 +252,22 @@ jit_emit_add(struct jit_state *s, struct jit_instruction *i)
                 } else if(hostreg_in2 == hostreg_out) {
                     hr_in = hostreg_in1;
                 }
-                s->p_bufcur = jit_emit__add_reg_to_reg((uint8_t *)s->p_bufcur,
+                s->p_bufcur = g_e_r_to_r[i->op]((uint8_t *)s->p_bufcur,
                         hr_in, hostreg_out);
             } else if(i->in1_type == JIT_OPERAND_IMM) {
-                s->p_bufcur = jit_emit__add_imm32_to_reg((uint8_t *)s->p_bufcur,
+                s->p_bufcur = g_e_imm32_to_r[i->op]((uint8_t *)s->p_bufcur,
                         i->in1.imm32, hostreg_out);
             }
         }
     }
 
-    printf("> add:\t");
+    printf("> %s:\t", g_opsz[i->op]);
     for(n = 0; n < (s->p_bufcur - begin); n++)
         printf("%02x ", begin[n]);
     printf("\n");
 
 l_exit:
     return e;
-}
-
-jit_error
-jit_emit_sub(struct jit_state *s, struct jit_instruction *i)
-{
-    return JIT_SUCCESS;
-}
-
-jit_error
-jit_emit_mul(struct jit_state *s, struct jit_instruction *i)
-{
-    return JIT_SUCCESS;
-}
-
-jit_error
-jit_emit_div(struct jit_state *s, struct jit_instruction *i)
-{
-    return JIT_SUCCESS;
-}
-
-jit_error
-jit_emit_shl(struct jit_state *s, struct jit_instruction *i)
-{
-    return JIT_SUCCESS;
-}
-
-jit_error
-jit_emit_shr(struct jit_state *s, struct jit_instruction *i)
-{
-    return JIT_SUCCESS;
-}
-
-jit_error
-jit_emit_and(struct jit_state *s, struct jit_instruction *i)
-{
-    return JIT_SUCCESS;
-}
-
-jit_error
-jit_emit_or(struct jit_state *s, struct jit_instruction *i)
-{
-    return JIT_SUCCESS;
-}
-
-jit_error
-jit_emit_xor(struct jit_state *s, struct jit_instruction *i)
-{
-    return JIT_SUCCESS;
 }
 
 jit_error
@@ -292,8 +315,8 @@ l_exit:
 uint8_t*
 jit_emit__mov_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_register reg)
 {
-    if(reg & 0x8) *p++ = REX(0, 0, 0, 1);
-    *p++ = 0xb8 + (reg & 0x7);
+    if(NEED_REX(reg)) *p++ = REX_B;
+    *p++ = 0xb8 + HOSTREG(reg);
     *(int32_t *)p = imm;
     p += sizeof(int32_t);
 
@@ -303,27 +326,132 @@ jit_emit__mov_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_register reg)
 uint8_t*
 jit_emit__mov_reg_to_reg(uint8_t *p, jit_host_register regin, jit_host_register regout)
 {
-    if(regin & 0x8 || regout & 0x8) *p++ = REX(0, 0, 0, 1);
+    if(NEED_REX(regin) || NEED_REX(regout)) *p++ = REX_B;
     *p++ = 0x89;
-    *p++ = MODRM(3, regout, regin);
+    *p++ = MODRM(MOD_REGDIRECT, HOSTREG(regout), HOSTREG(regin));
     return p;
 }
 
 uint8_t*
 jit_emit__add_reg_to_reg(uint8_t *p, jit_host_register regin, jit_host_register regout)
 {
-    if(regin & 0x8 || regin & 0x8) *p++ = REX(0, 0, 0, 1);
+    if(NEED_REX(regin) || NEED_REX(regout)) *p++ = REX_B;
 	*p++ = 0x03;
-	*p++ = MODRM(3, regout, regin);
+	*p++ = MODRM(MOD_REGDIRECT, HOSTREG(regout), HOSTREG(regin));
     return p;
 }
 
 uint8_t*
 jit_emit__add_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_register regout)
 {
-    if(regout & 0x8) *p++ = REX(0, 0, 0, 1);
+    if(NEED_REX(regout)) *p++ = REX_B;
     *p++ = 0x81;
-    *p++ = MODRM(3, 0, regout);
+    *p++ = MODRM(MOD_REGDIRECT, OX_ADD, HOSTREG(regout));
+    *(int32_t *)p = imm;
+    p += sizeof(int32_t);
+
+    return p;
+}
+
+uint8_t*
+jit_emit__or_reg_to_reg(uint8_t *p, jit_host_register regin, jit_host_register regout)
+{
+    if(NEED_REX(regin) || NEED_REX(regout)) *p++ = REX_B;
+	*p++ = 0x09;
+	*p++ = MODRM(MOD_REGDIRECT, HOSTREG(regout), HOSTREG(regin));
+    return p;
+}
+
+uint8_t*
+jit_emit__or_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_register regout)
+{
+    if(NEED_REX(regout)) *p++ = REX_B;
+    *p++ = 0x81;
+    *p++ = MODRM(MOD_REGDIRECT, OX_OR, HOSTREG(regout));
+    *(int32_t *)p = imm;
+    p += sizeof(int32_t);
+
+    return p;
+}
+
+uint8_t*
+jit_emit__and_reg_to_reg(uint8_t *p, jit_host_register regin, jit_host_register regout)
+{
+    if(NEED_REX(regin) || NEED_REX(regout)) *p++ = REX_B;
+    *p++ = 0x21;
+    *p++ = MODRM(MOD_REGDIRECT, HOSTREG(regout), HOSTREG(regin));
+    return p;
+}
+
+uint8_t*
+jit_emit__and_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_register regout)
+{
+    if(NEED_REX(regout)) *p++ = REX_B;
+    *p++ = 0x81;
+    *p++ = MODRM(MOD_REGDIRECT, OX_AND, HOSTREG(regout));
+    *(int32_t *)p = imm;
+    p += sizeof(int32_t);
+
+    return p;
+}
+
+uint8_t*
+jit_emit__sub_reg_to_reg(uint8_t *p, jit_host_register regin, jit_host_register regout)
+{
+    if(NEED_REX(regin) || NEED_REX(regout)) *p++ = REX_B;
+	*p++ = 0x29;
+	*p++ = MODRM(MOD_REGDIRECT, HOSTREG(regout), HOSTREG(regin));
+    return p;
+}
+
+uint8_t*
+jit_emit__sub_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_register regout)
+{
+    if(NEED_REX(regout)) *p++ = REX_B;
+    *p++ = 0x81;
+    *p++ = MODRM(MOD_REGDIRECT, OX_SUB, HOSTREG(regout));
+    *(int32_t *)p = imm;
+    p += sizeof(int32_t);
+
+    return p;
+}
+
+uint8_t*
+jit_emit__xor_reg_to_reg(uint8_t *p, jit_host_register regin, jit_host_register regout)
+{
+    if(NEED_REX(regin) || NEED_REX(regout)) *p++ = REX_B;
+	*p++ = 0x31;
+	*p++ = MODRM(MOD_REGDIRECT, HOSTREG(regout), HOSTREG(regin));
+    return p;
+}
+
+uint8_t*
+jit_emit__xor_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_register regout)
+{
+    if(NEED_REX(regout)) *p++ = REX_B;
+    *p++ = 0x81;
+    *p++ = MODRM(MOD_REGDIRECT, OX_XOR, HOSTREG(regout));
+    *(int32_t *)p = imm;
+    p += sizeof(int32_t);
+
+    return p;
+}
+
+uint8_t*
+jit_emit__cmp_reg_to_reg(uint8_t *p, jit_host_register regin, jit_host_register regout)
+{
+    if(NEED_REX(regin) || NEED_REX(regout)) *p++ = REX_B;
+	*p++ = 0x39;
+	*p++ = MODRM(MOD_REGDIRECT, HOSTREG(regout), HOSTREG(regin));
+    return p;
+}
+
+uint8_t*
+jit_emit__cmp_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_register regout)
+{
+    if(NEED_REX(regout)) *p++ = REX_B;
+    *p++ = 0x81;
+    *p++ = MODRM(MOD_REGDIRECT, OX_CMP, HOSTREG(regout));
     *(int32_t *)p = imm;
     p += sizeof(int32_t);
 

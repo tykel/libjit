@@ -12,6 +12,7 @@ DIR=$(shell pwd)
 LIB=lib$(NAME).so
 ARCHIVE=lib$(NAME)-linux-x86_64.tar.gz
 
+HEADERS=$(wildcard $(INCLUDE)/*.h) $(wildcard $(SRC)/*.h)
 SOURCES=$(wildcard $(SRC)/*.c)
 OBJECTS=$(patsubst %.c,%.o,$(SOURCES))
 
@@ -21,12 +22,12 @@ all: testjit $(ARCHIVE)
 $(ARCHIVE): $(LIB) $(INCLUDE)/jit.h LICENSE
 	$(TAR) -czf $@ $^
 
-testjit: main.c $(LIB)
-	$(CC) $(CFLAGS) -o $@ $^ -Wl,-rpath=$(DIR) -L./ -ljit
+testjit: main.c $(LIB) $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ main.c $(LIB) -Wl,-rpath=$(DIR) -L./ -ljit
 
-$(LIB): $(OBJECTS)
-	$(LD) $(LDFLAGS) -o $@ $^
+$(LIB): $(OBJECTS) $(HEADERS)
+	$(LD) $(LDFLAGS) -o $@ $(OBJECTS)
 
-$(SRC)/%.o: $(SRC)/%.c
+$(SRC)/%.o: $(SRC)/%.c $(HEADERS)
 	$(CC) $(CFLAGS) -fPIC -c -o $@ $<
 

@@ -113,6 +113,12 @@ l_exit:
     return i;
 }
 
+jit_label
+jit_label_here(struct jit_state *s)
+{
+    return (jit_label)s->blk_ni;
+}
+
 jit_error
 jit_begin_block(struct jit_state *s, void *buf)
 {

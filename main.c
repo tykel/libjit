@@ -12,7 +12,7 @@ int main(int argc, char *argv[])
     jit_state *s;
     jit_error e = JIT_SUCCESS;
     struct jit_instruction *i[10];
-    size_t rlive_start = INT32_MAX, rlive_end = INT32_MAX;
+    size_t rlive_start = SIZE_MAX, rlive_end = SIZE_MAX;
 
     void *buffer = NULL;
     void *abuffer = NULL;
@@ -27,7 +27,7 @@ int main(int argc, char *argv[])
     }
 
     printf("Allocating jit code buffer\n");
-    buffer = malloc(4096 * 2);
+    buffer = malloc(4096*1 + 4096);
     if(buffer == NULL) {
         fprintf(stderr, "failed to malloc buffer\n");
         jit_destroy(s);
@@ -38,8 +38,9 @@ int main(int argc, char *argv[])
     // Create a "movl $100, %eax" type instruction
     printf("Creating jit v-instruction list\n");
    
-    for(; n < 5; n++)
+    for(; n < 5; n++) {
         i[n] = jit_instruction_new(s);
+    }
     MOVE_I_R_32(i[0], 100, jit_register_new(s))
     MOVE_I_R_32(i[1], 200, jit_register_new(s))
     ADD_R_R_R_32(i[2], i[0]->out.reg, i[1]->out.reg, i[0]->out.reg)
@@ -67,8 +68,8 @@ int main(int argc, char *argv[])
     jit_begin_block(s, abuffer);
     jit_emit_move(s, i[0]);
     jit_emit_move(s, i[1]);
-    jit_emit_add(s, i[2]);
-    jit_emit_add(s, i[3]);
+    jit_emit_arith(s, i[2]);
+    jit_emit_arith(s, i[3]);
     jit_emit_ret(s, i[4]);
     jit_end_block(s);
 

@@ -47,7 +47,7 @@ typedef uint8_t unsigned char;
 
 typedef uint32_t jit_error;
 
-typedef intptr_t jit_memory;
+typedef size_t jit_label;
 
 
 /* Currently only x86_64 is supported.
@@ -115,6 +115,7 @@ enum e_jit_op {
     JIT_OP_JUMP,
     JIT_OP_JUMP_IF,
     JIT_OP_RET,
+    JIT_NUM_OPS,
 };
 
 typedef enum e_jit_op jit_op;
@@ -163,13 +164,21 @@ struct jit_instruction {
     (i)->in1_type=JIT_OPERAND_IMM; (i)->out_type=JIT_OPERAND_REG; \
     (i)->in1.imm32=a; (i)->out.reg=b; }
 
-#define ADD_R_R_R_32(i,a,b,c) {(i)->op=JIT_OP_ADD; \
+#define OP_R_R_R_32(i,o,a,b,c) {(i)->op=(o); \
     (i)->in1_type=(i)->in2_type=(i)->out_type=JIT_OPERAND_REG; \
     (i)->in1.reg=a; (i)->in2.reg=b; (i)->out.reg=c; }
-#define ADD_I_R_R_32(i,a,b,c) {(i)->op=JIT_OP_ADD; \
+#define OP_I_R_R_32(i,o,a,b,c) {(i)->op=(o); \
     (i)->in1_type=JIT_OPERAND_IMM; \
     (i)->in2_type=(i)->out_type=JIT_OPERAND_REG; \
     (i)->in1.imm32=a; (i)->in2.reg=b; (i)->out.reg=c; }
+
+#define ADD_R_R_R_32(i,a,b,c) OP_R_R_R_32((i),JIT_OP_ADD,(a),(b),(c))
+#define ADD_I_R_R_32(i,a,b,c) OP_I_R_R_32((i),JIT_OP_ADD,(a),(b),(c))
+#define SUB_R_R_R_32(i,a,b,c) OP_R_R_R_32((i),JIT_OP_SUB,(a),(b),(c))
+#define SUB_I_R_R_32(i,a,b,c) OP_I_R_R_32((i),JIT_OP_SUB,(a),(b),(c))
+#define AND_R_R_R_32(i,a,b,c) OP_R_R_R_32((i),JIT_OP_AND,(a),(b),(c))
+#define AND_I_R_R_32(i,a,b,c) OP_I_R_R_32((i),JIT_OP_AND,(a),(b),(c))
+
 
 struct jit_emitter;
 
@@ -223,6 +232,8 @@ jit_register jit_register_new(struct jit_state *s);
 
 struct jit_instruction* jit_instruction_new(struct jit_state *s);
 
+jit_label jit_label_here(struct jit_state *s);
+
 jit_error jit_create_emitter(struct jit_state *s);
 
 jit_error jit_destroy_emitter(struct jit_state *s);
@@ -231,15 +242,7 @@ jit_error jit_destroy_emitter(struct jit_state *s);
 jit_error jit_register_life(struct jit_state *s, jit_register reg, size_t *start, size_t *end);
 
 jit_error jit_emit_move(struct jit_state *s, struct jit_instruction *i);
-jit_error jit_emit_add(struct jit_state *s, struct jit_instruction *i);
-jit_error jit_emit_sub(struct jit_state *s, struct jit_instruction *i);
-jit_error jit_emit_mul(struct jit_state *s, struct jit_instruction *i);
-jit_error jit_emit_div(struct jit_state *s, struct jit_instruction *i);
-jit_error jit_emit_shl(struct jit_state *s, struct jit_instruction *i);
-jit_error jit_emit_shr(struct jit_state *s, struct jit_instruction *i);
-jit_error jit_emit_and(struct jit_state *s, struct jit_instruction *i);
-jit_error jit_emit_or(struct jit_state *s, struct jit_instruction *i);
-jit_error jit_emit_xor(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_arith(struct jit_state *s, struct jit_instruction *i);
 jit_error jit_emit_call(struct jit_state *s, struct jit_instruction *i);
 jit_error jit_emit_jump(struct jit_state *s, struct jit_instruction *i);
 jit_error jit_emit_jump_if(struct jit_state *s, struct jit_instruction *i);
