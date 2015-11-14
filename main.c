@@ -59,14 +59,17 @@ int main(int argc, char *argv[])
     }
 
     // Temporary while testing register allocation
-    jit_destroy(s);
-    goto l_exit;
+    //jit_destroy(s);
+    //goto l_exit;
 
     // Emit code
     printf("Emitting code to jit buffer\n");
     jit_begin_block(s, abuffer);
     jit_emit_move(s, i[0]);
-    jit_emit_ret(s, i[1]);
+    jit_emit_move(s, i[1]);
+    jit_emit_add(s, i[2]);
+    jit_emit_add(s, i[3]);
+    jit_emit_ret(s, i[4]);
     jit_end_block(s);
 
     printf("Attempting to mprotect buffer %p (page-aligned from %p)\n",
