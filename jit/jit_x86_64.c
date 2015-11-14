@@ -122,6 +122,78 @@ l_exit:
 }
 
 jit_error
+jit_emit_add(struct jit_state *s, struct jit_instruction *i)
+{
+    return JIT_SUCCESS;
+}
+
+jit_error
+jit_emit_sub(struct jit_state *s, struct jit_instruction *i)
+{
+    return JIT_SUCCESS;
+}
+
+jit_error
+jit_emit_mul(struct jit_state *s, struct jit_instruction *i)
+{
+    return JIT_SUCCESS;
+}
+
+jit_error
+jit_emit_div(struct jit_state *s, struct jit_instruction *i)
+{
+    return JIT_SUCCESS;
+}
+
+jit_error
+jit_emit_shl(struct jit_state *s, struct jit_instruction *i)
+{
+    return JIT_SUCCESS;
+}
+
+jit_error
+jit_emit_shr(struct jit_state *s, struct jit_instruction *i)
+{
+    return JIT_SUCCESS;
+}
+
+jit_error
+jit_emit_and(struct jit_state *s, struct jit_instruction *i)
+{
+    return JIT_SUCCESS;
+}
+
+jit_error
+jit_emit_or(struct jit_state *s, struct jit_instruction *i)
+{
+    return JIT_SUCCESS;
+}
+
+jit_error
+jit_emit_xor(struct jit_state *s, struct jit_instruction *i)
+{
+    return JIT_SUCCESS;
+}
+
+jit_error
+jit_emit_call(struct jit_state *s, struct jit_instruction *i)
+{
+    return JIT_SUCCESS;
+}
+
+jit_error
+jit_emit_jump(struct jit_state *s, struct jit_instruction *i)
+{
+    return JIT_SUCCESS;
+}
+
+jit_error
+jit_emit_jump_if(struct jit_state *s, struct jit_instruction *i)
+{
+    return JIT_SUCCESS;
+}
+
+jit_error
 jit_emit_ret(struct jit_state *s, struct jit_instruction *i)
 {
     jit_error e = JIT_SUCCESS;

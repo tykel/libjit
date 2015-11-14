@@ -11,10 +11,12 @@ int main(int argc, char *argv[])
 {
     jit_state *s;
     jit_error e = JIT_SUCCESS;
-    struct jit_instruction *i0, *i1;
+    struct jit_instruction *i[10];
+    size_t rlive_start = INT32_MAX, rlive_end = INT32_MAX;
 
     void *buffer = NULL;
     void *abuffer = NULL;
+    size_t n = 0;
     int res = -1;
 
     printf("Creating jit state\n");
@@ -35,24 +37,36 @@ int main(int argc, char *argv[])
 
     // Create a "movl $100, %eax" type instruction
     printf("Creating jit v-instruction list\n");
-    
-    i0 = jit_instruction_new(s);
-    i0->op = JIT_OP_MOVE;
-    i0->in1_type = JIT_OPERAND_IMM;
-    i0->in1.imm32 = 100;
-    i0->out_type = JIT_OPERAND_REG;
-    i0->out.reg = jit_register_new(s);
-
-    i1 = jit_instruction_new(s);
-    i1->op = JIT_OP_RET;
+   
+    for(; n < 5; n++)
+        i[n] = jit_instruction_new(s);
+    MOVE_I_R_32(i[0], 100, jit_register_new(s))
+    MOVE_I_R_32(i[1], 200, jit_register_new(s))
+    ADD_R_R_R_32(i[2], i[0]->out.reg, i[1]->out.reg, i[0]->out.reg)
+    ADD_I_R_R_32(i[3], 300, i[1]->out.reg, jit_register_new(s))
+    i[4]->op = JIT_OP_RET;
 
     // TODO: Reduce the jit registers to the number in x86_64
+    e = jit_register_life(s, i[0]->out.reg, &rlive_start, &rlive_end);
+    if(FAILURE(e)) {
+        fprintf(stderr, "Could not get register %d's liveness: %d\n",
+                i[0]->out.reg, e);
+    }
+    e = jit_register_life(s, i[1]->out.reg, &rlive_start, &rlive_end);
+    if(FAILURE(e)) {
+        fprintf(stderr, "Could not get register %d's liveness: %d\n",
+                i[1]->out.reg, e);
+    }
+
+    // Temporary while testing register allocation
+    jit_destroy(s);
+    goto l_exit;
 
     // Emit code
     printf("Emitting code to jit buffer\n");
     jit_begin_block(s, abuffer);
-    jit_emit_move(s, i0);
-    jit_emit_ret(s, i1);
+    jit_emit_move(s, i[0]);
+    jit_emit_ret(s, i[1]);
     jit_end_block(s);
 
     printf("Attempting to mprotect buffer %p (page-aligned from %p)\n",

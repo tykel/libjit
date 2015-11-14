@@ -65,6 +65,7 @@ enum e_jit_errors {
     JIT_ERROR_NO_MORE_VREGS,    // Somehow, we used over 2 billion jit registers
     JIT_ERROR_NULL_PTR,
     JIT_ERROR_MALLOC,
+    JIT_ERROR_VREG_NOT_FOUND,
     JIT_MAX,
 };
 
@@ -155,6 +156,21 @@ struct jit_instruction {
     struct jit_instruction *next;
 };
 
+#define MOVE_R_R_32(i,a,b) {(i)->op=JIT_OP_MOVE; \
+    (i)->in1_type=(i)->out_type=JIT_OPERAND_REG; \
+    (i)->in1.reg=a; (i)->out.reg=b; }
+#define MOVE_I_R_32(i,a,b) {(i)->op=JIT_OP_MOVE; \
+    (i)->in1_type=JIT_OPERAND_IMM; (i)->out_type=JIT_OPERAND_REG; \
+    (i)->in1.imm32=a; (i)->out.reg=b; }
+
+#define ADD_R_R_R_32(i,a,b,c) {(i)->op=JIT_OP_ADD; \
+    (i)->in1_type=(i)->in2_type=(i)->out_type=JIT_OPERAND_REG; \
+    (i)->in1.reg=a; (i)->in2.reg=b; (i)->out.reg=c; }
+#define ADD_I_R_R_32(i,a,b,c) {(i)->op=JIT_OP_ADD; \
+    (i)->in1_type=JIT_OPERAND_IMM; \
+    (i)->in2_type=(i)->out_type=JIT_OPERAND_REG; \
+    (i)->in1.imm32=a; (i)->in2.reg=b; (i)->out.reg=c; }
+
 struct jit_emitter;
 
 struct jit_state {
@@ -211,7 +227,22 @@ jit_error jit_create_emitter(struct jit_state *s);
 
 jit_error jit_destroy_emitter(struct jit_state *s);
 
+/* Return start and end of a register's liveness (or life). */
+jit_error jit_register_life(struct jit_state *s, jit_register reg, size_t *start, size_t *end);
+
 jit_error jit_emit_move(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_add(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_sub(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_mul(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_div(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_shl(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_shr(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_and(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_or(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_xor(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_call(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_jump(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_jump_if(struct jit_state *s, struct jit_instruction *i);
 jit_error jit_emit_ret(struct jit_state *s, struct jit_instruction *i);
 
 #endif

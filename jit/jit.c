@@ -94,11 +94,20 @@ jit_instruction_new(struct jit_state *s)
             goto l_exit;
         }
     }
-    i = &s->__g_pipool[s->__g_nicur++];
-    
+
+    printf("creating instruction %zu\n", s->blk_ni);
+    i = &s->__g_pipool[s->__g_nicur];
     if(s->p_icur) {
-        s->p_icur->next = i;
+        s->p_icur->next = i; 
     }
+    s->__g_nicur++;
+    s->blk_ni++;
+    
+    if(s->blk_is == NULL) {
+        s->blk_is = i;
+    }
+
+    s->p_icur = i;
 
 l_exit:
     return i;
@@ -121,5 +130,49 @@ jit_end_block(struct jit_state *s)
 {
     jit_error e = JIT_SUCCESS;
 
+    return e;
+}
+
+jit_error
+jit_register_life(struct jit_state *s, jit_register reg, size_t *start,
+        size_t *end)
+{
+    struct jit_instruction *i = NULL;
+    jit_error e = JIT_SUCCESS;
+    size_t n, first, last;
+
+    if(s == NULL || start == NULL || end == NULL) {
+        FAILPATH(JIT_ERROR_NULL_PTR);
+    }
+
+    for(i = s->blk_is, n = 0, first = SIZE_MAX, last = SIZE_MAX;
+            i != NULL;
+            i = i->next, n++) {
+        if(i->out_type == JIT_OPERAND_REG && i->out.reg == reg) {
+            if(first == SIZE_MAX) {
+                first = n;
+                last = n;
+            } else {
+                break;
+            }
+        }
+
+        if(i->in1_type == JIT_OPERAND_REG && i->in1.reg == reg) {
+            last = n;
+        }
+        if(i->in2_type == JIT_OPERAND_REG && i->in2.reg == reg) {
+            last = n;
+        }
+    }
+    if(first == JIT_REGISTER_INVALID) {
+        FAILPATH(JIT_ERROR_VREG_NOT_FOUND);
+    }
+
+    *start = first;
+    *end = last;
+
+    printf("register %d: live from insn %zu to %zu\n", reg, first, last);
+
+l_exit:
     return e;
 }
