@@ -27,7 +27,7 @@ extern "C" {
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "jit.h"
+#include "libjit.h"
 
 #define FAILPATH(err) {e=(err);goto l_exit;}
 
@@ -81,7 +81,7 @@ typedef uint8_t* (*pfn_e_imm32_to_r)(uint8_t *p, int32_t imm, jit_host_register 
 uint8_t* jit_emit__mov_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_register reg);
 uint8_t* jit_emit__mov_reg_to_m32(uint8_t *p, jit_host_register reg, int32_t *m);
 uint8_t* jit_emit__mov_m32_to_reg(uint8_t *p, int32_t *m, jit_host_register reg);
-uint8_t* jit_emit__mov_immdisp32_to_reg(uint8_t *p, void *m, jit_host_register reg);
+uint8_t* jit_emit__lea_immdisp32_to_reg(uint8_t *p, void *m, jit_host_register reg);
 uint8_t* jit_emit__mov_regptr32_to_reg(uint8_t *p, struct jit_host_pointer *rp, jit_host_register reg);
 uint8_t* jit_emit__mov_reg_to_reg(uint8_t *p, jit_host_register regin, jit_host_register regto);
 uint8_t* jit_emit__add_reg_to_reg(uint8_t *p, jit_host_register regin, jit_host_register regout);
@@ -226,10 +226,6 @@ jit_get_mapped_host_register(struct jit_state *s, jit_register reg)
             hostreg = n;
         }
     }
-    if(hostreg != JIT_HOST_REGISTER_INVALID) {
-        printf("found vreg %d in %s\n", reg, g_hostregsz[hostreg]);
-        goto l_exit;
-    }
 
     // Virtual register not yet mapped; try to find a spare host register
     if(hostreg == JIT_HOST_REGISTER_INVALID) {
@@ -237,15 +233,11 @@ jit_get_mapped_host_register(struct jit_state *s, jit_register reg)
             if(regmap[n] == JIT_REGISTER_INVALID) {
                 regmap[n] = reg;
                 hostreg = n;
-                //printf("vreg %d not mapped, using %s (host reg %d)\n",
-                //        reg, g_hostregsz[n], n);
+                printf("vreg %d not mapped, using %s (host reg %d)\n",
+                        reg, g_hostregsz[n], n);
                 break;
             }
         }
-    }
-    if(hostreg != JIT_HOST_REGISTER_INVALID) {
-        printf("new vreg %d in %s\n", reg, g_hostregsz[hostreg]);
-        goto l_exit;
     }
 
     // All the slots are taken: evict the oldest one, if they are not all
@@ -264,11 +256,10 @@ jit_get_mapped_host_register(struct jit_state *s, jit_register reg)
             evicted = regmap[oldest];
             regmap[oldest] = reg;
             hostreg = oldest;
+            printf("vreg %d in %s (host reg %d) by evicting vreg %d\n",
+                    reg, g_hostregsz[hostreg], hostreg, evicted);
         }
     }
-    if(hostreg != JIT_HOST_REGISTER_INVALID)
-        printf("new vreg %d in %s by eviction of vreg %d\n",
-                reg, g_hostregsz[hostreg], evicted);
 
 l_exit:
     return hostreg;
@@ -281,8 +272,7 @@ jit_get_host_regptr(struct jit_state *s, struct jit_pointer *p)
     hp.base = s->p_emitter->host_regmap[p->base];
     hp.index = (p->base != JIT_REGISTER_INVALID) ?
         s->p_emitter->host_regmap[p->base] : JIT_HOST_REGISTER_INVALID;
-    hp.scale = (p->scale >= 0 && p->scale <= 8) ?
-        p_scalemap[p->scale] : -1;
+    hp.scale = (p->scale >= 0 && p->scale <= 8) ? p_scalemap[p->scale] : -1;
     hp.offset = p->offset;
 
     return hp;
@@ -334,7 +324,7 @@ jit_emit_move(struct jit_state *s, struct jit_instruction *i)
     } else if(i->in1_type == JIT_OPERAND_IMMDISP) {
         if(i->out_type == JIT_OPERAND_REG) {
             hostreg_out = jit_get_mapped_host_register(s, i->out.reg);
-            s->p_bufcur = jit_emit__mov_immdisp32_to_reg(s->p_bufcur,
+            s->p_bufcur = jit_emit__lea_immdisp32_to_reg(s->p_bufcur,
                     i->in1.ptr, hostreg_out);
         }
     }
@@ -481,7 +471,7 @@ jit_emit__mov_m32_to_reg(uint8_t *p, int32_t *m, jit_host_register reg)
 }
 
 uint8_t*
-jit_emit__mov_immdisp32_to_reg(uint8_t *p, void *m, jit_host_register reg)
+jit_emit__lea_immdisp32_to_reg(uint8_t *p, void *m, jit_host_register reg)
 {
     size_t ibs = !!(NEED_REX(reg)) + 1 + 1 + sizeof(int32_t);
     int32_t disp = (int32_t)((int64_t)m - (int64_t)p - ibs);
@@ -490,7 +480,6 @@ jit_emit__mov_immdisp32_to_reg(uint8_t *p, void *m, jit_host_register reg)
     *p++ = MODRM(MOD_RIP_SIB, HOSTREG(reg), RM_DISP32);
     *(int32_t *)p = disp;
     p += sizeof(int32_t);
-    printf("%p - %p = %d (%08x)\n", m, (p - ibs), disp, disp);
 
     return p;
 }

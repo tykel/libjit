@@ -19,7 +19,7 @@ OBJECTS=$(patsubst %.c,%.o,$(SOURCES))
 .PHONY: all
 all: testjit $(ARCHIVE)
 
-$(ARCHIVE): $(LIB) $(INCLUDE)/jit.h LICENSE
+$(ARCHIVE): $(LIB) $(INCLUDE)/libjit.h LICENSE
 	$(TAR) -czf $@ $^
 
 testjit: main.c $(LIB) $(HEADERS)

@@ -3,7 +3,7 @@
 
 #include <sys/mman.h>
 
-#include "jit.h"
+#include "libjit.h"
 
 typedef int (*p_fn)(void);
 
@@ -52,14 +52,19 @@ int main(int argc, char *argv[])
     // memset(s.vm, 0, 320*240);
     // s.bgc = 0;
     
-    dummy[5] = 666;
-
+    //dummy[5] = 666;
     
-    r[0] = jit_register_new(s);
-    MOVE_ID_R_32(i[0], dummy, r[0]);
-    r[1] = jit_register_new_constrained(s, JIT_REGMAP_CALL_RET);
-    MOVE_RP_R_32(i[1], r[0], JIT_REGISTER_INVALID, 1, 5*sizeof(int), r[1]); 
-    i[2]->op = JIT_OP_RET;
+    r[0] = jit_register_new_constrained(s, JIT_REGMAP_CALL_ARG0);
+    MOVE_I_R_32(i[0], 1, r[0]);
+    r[1] = jit_register_new_constrained(s, JIT_REGMAP_CALL_ARG1);
+    MOVE_I_R_32(i[1], 10, r[1]);
+    r[2] = jit_register_new_constrained(s, JIT_REGMAP_CALL_ARG2);
+    MOVE_I_R_32(i[2], 100, r[2]);
+    CALL_M_32(i[3], (int32_t*)dummyfn);
+    //MOVE_ID_R_32(i[0], dummy, r[0]);
+    //r[1] = jit_register_new_constrained(s, JIT_REGMAP_CALL_RET);
+    //MOVE_RP_R_32(i[1], r[0], JIT_REGISTER_INVALID, 1, 5*sizeof(int), r[1]); 
+    i[4]->op = JIT_OP_RET;
     
 
     // Emit code
@@ -67,10 +72,9 @@ int main(int argc, char *argv[])
     jit_begin_block(s, abuffer);
     jit_emit_move(s, i[0]);
     jit_emit_move(s, i[1]);
-    //jit_emit_move(s, i[2]);
-    //jit_emit_call(s, i[3]);
-    //jit_emit_arith(s, i[4]);
-    jit_emit_ret(s, i[2]);
+    jit_emit_move(s, i[2]);
+    jit_emit_call(s, i[3]);
+    jit_emit_ret(s, i[4]);
     jit_end_block(s);
 
     printf("Attempting to mprotect buffer %p (page-aligned from %p)\n",

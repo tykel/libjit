@@ -28,7 +28,7 @@ extern "C" {
 #include <stdlib.h>
 #include <string.h>
 
-#include "jit.h"
+#include "libjit.h"
 
 #define FAILPATH(err) {e=(err);goto l_exit;}
 
