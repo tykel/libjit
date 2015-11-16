@@ -78,8 +78,9 @@ jit_register_new(struct jit_state *s)
     jit_register r = JIT_REGISTER_INVALID;
 
     if(s->regcur < INT32_MAX) { 
-        r  = s->regcur++;
+        r = s->regcur++;
     }
+    printf("new vreg %d created\n", r);
 
     return r;
 }

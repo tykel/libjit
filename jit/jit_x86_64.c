@@ -47,6 +47,7 @@ typedef int32_t jit_register_age;
 struct jit_emitter {
     jit_register host_regmap[NUM_HOST_REGS];
     jit_register_age host_agemap[NUM_HOST_REGS];
+    uint32_t host_busy;
 };
 
 /* A variant of jit_pointer using host registers. */
@@ -175,7 +176,7 @@ jit_create_emitter(struct jit_state *s)
     jit_error e = JIT_SUCCESS;
     size_t n;
 
-    s->p_emitter = malloc(sizeof(struct jit_emitter));
+    s->p_emitter = calloc(1, sizeof(struct jit_emitter));
     if(s->p_emitter == NULL) {
         FAILPATH(JIT_ERROR_MALLOC);
     }
@@ -198,10 +199,12 @@ jit_destroy_emitter(struct jit_state *s)
 jit_error
 jit_set_register_mapping(struct jit_state *s, jit_register reg, int32_t map)
 {
-    jit_error e = (s->p_emitter->host_regmap[map] == JIT_REGISTER_INVALID) ?
+    jit_error e = (s->p_emitter->host_regmap[map] == 
+            JIT_REGISTER_INVALID) ?
         JIT_SUCCESS : JIT_ERROR_REG_BUSY;
     if(e == JIT_SUCCESS) {
         s->p_emitter->host_regmap[g_regmap[map]] = reg;
+        s->p_emitter->host_busy |= (1 << reg);
     }
     return e;
 }
@@ -212,6 +215,8 @@ jit_get_mapped_host_register(struct jit_state *s, jit_register reg)
     int n;
     jit_host_register hostreg = JIT_HOST_REGISTER_INVALID;
     jit_register *regmap = s->p_emitter->host_regmap;
+    jit_register_age *agemap = s->p_emitter->host_agemap;
+    jit_register evicted = JIT_REGISTER_INVALID;
     
     if(reg == JIT_REGISTER_INVALID) {
         goto l_exit;
@@ -221,6 +226,10 @@ jit_get_mapped_host_register(struct jit_state *s, jit_register reg)
             hostreg = n;
         }
     }
+    if(hostreg != JIT_HOST_REGISTER_INVALID) {
+        printf("found vreg %d in %s\n", reg, g_hostregsz[hostreg]);
+        goto l_exit;
+    }
 
     // Virtual register not yet mapped; try to find a spare host register
     if(hostreg == JIT_HOST_REGISTER_INVALID) {
@@ -228,12 +237,38 @@ jit_get_mapped_host_register(struct jit_state *s, jit_register reg)
             if(regmap[n] == JIT_REGISTER_INVALID) {
                 regmap[n] = reg;
                 hostreg = n;
-                printf("vreg %d not mapped, using %s (host reg %d)\n",
-                        reg, g_hostregsz[n], n);
+                //printf("vreg %d not mapped, using %s (host reg %d)\n",
+                //        reg, g_hostregsz[n], n);
                 break;
             }
         }
     }
+    if(hostreg != JIT_HOST_REGISTER_INVALID) {
+        printf("new vreg %d in %s\n", reg, g_hostregsz[hostreg]);
+        goto l_exit;
+    }
+
+    // All the slots are taken: evict the oldest one, if they are not all
+    // mapped to specific slots
+    if(hostreg == JIT_HOST_REGISTER_INVALID) {
+        int oldest = -1;
+        int maxage = -1;
+        for(n = 0; n < NUM_HOST_REGS; n++) {
+            if(agemap[n] > maxage &&
+                    !(s->p_emitter->host_busy & (1 << n))) {
+                oldest = n;
+                maxage = agemap[n];
+            }
+        }
+        if(oldest != -1) {
+            evicted = regmap[oldest];
+            regmap[oldest] = reg;
+            hostreg = oldest;
+        }
+    }
+    if(hostreg != JIT_HOST_REGISTER_INVALID)
+        printf("new vreg %d in %s by eviction of vreg %d\n",
+                reg, g_hostregsz[hostreg], evicted);
 
 l_exit:
     return hostreg;
