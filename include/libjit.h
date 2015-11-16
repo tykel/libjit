@@ -164,8 +164,8 @@ enum e_jit_op {
 typedef enum e_jit_op jit_op;
 
 struct jit_pointer {
-    register_t base;
-    register_t index;
+    jit_register base;
+    jit_register index;
     int32_t scale;
     int32_t offset;
 };
