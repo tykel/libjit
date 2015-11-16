@@ -20,6 +20,9 @@
  * THE SOFTWARE.
  */
 
+#ifdef __CPLUSPLUS
+extern "C" {
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,16 +44,17 @@ jit_create(struct jit_state **s, jit_flags flags)
         FAILPATH(JIT_ERROR_NULL_PTR);
     }
 
-    *s = calloc(1, sizeof(struct jit_state));
+    *s =(struct jit_state *) calloc(1, sizeof(struct jit_state));
     if(*s == NULL) {
         FAILPATH(JIT_ERROR_MALLOC);
     }
 
-    (*s)->__g_pipool = calloc(__JIT_POOL_ALLOC,
+    (*s)->__g_pipool = (struct jit_instruction *) calloc(__JIT_POOL_ALLOC,
             sizeof(struct jit_instruction));
     if((*s)->__g_pipool == NULL) {
         FAILPATH(JIT_ERROR_MALLOC);
     }
+    (*s)->__g_nipool = __JIT_POOL_ALLOC;
 
     e = jit_create_emitter(*s);
 
@@ -80,6 +84,14 @@ jit_register_new(struct jit_state *s)
     return r;
 }
 
+jit_register
+jit_register_new_constrained(struct jit_state *s, int32_t map)
+{
+    jit_register r = jit_register_new(s);
+    jit_set_register_mapping(s, r, map);
+    return r;
+}
+
 struct jit_instruction*
 jit_instruction_new(struct jit_state *s)
 {
@@ -88,14 +100,14 @@ jit_instruction_new(struct jit_state *s)
     // Grow the pool if needed.
     if(s->__g_nicur == s->__g_nipool) {
         s->__g_nipool += __JIT_POOL_ALLOC;
-        s->__g_pipool = realloc(s->__g_pipool,
-                s->__g_nipool * sizeof(__JIT_POOL_ALLOC));
+        s->__g_pipool = (struct jit_instruction *) realloc(s->__g_pipool,
+                s->__g_nipool * __JIT_POOL_ALLOC);
         if(s->__g_pipool == NULL) {
             goto l_exit;
         }
     }
 
-    printf("creating instruction %zu\n", s->blk_ni);
+    //printf("creating instruction %zu\n", s->blk_ni);
     i = &s->__g_pipool[s->__g_nicur];
     if(s->p_icur) {
         s->p_icur->next = i; 
@@ -124,7 +136,7 @@ jit_begin_block(struct jit_state *s, void *buf)
 {
     jit_error e = JIT_SUCCESS;
 
-    s->p_bufstart = s->p_bufcur = buf;
+    s->p_bufstart = s->p_bufcur = (uint8_t *) buf;
     s->blk_ni = s->blk_nb = 0;
     s->blk_is = s->__g_pipool;
     
@@ -170,7 +182,7 @@ jit_register_life(struct jit_state *s, jit_register reg, size_t *start,
             last = n;
         }
     }
-    if(first == JIT_REGISTER_INVALID) {
+    if(first == SIZE_MAX) {
         FAILPATH(JIT_ERROR_VREG_NOT_FOUND);
     }
 
@@ -182,3 +194,8 @@ jit_register_life(struct jit_state *s, jit_register reg, size_t *start,
 l_exit:
     return e;
 }
+
+#ifdef __CPLUSPLUS
+}
+#endif
+

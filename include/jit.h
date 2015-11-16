@@ -23,26 +23,52 @@
 #ifndef _JIT_H_
 #define _JIT_H_
 
+#ifdef __CPLUSPLUS
+extern "C" {
+#endif
+
 #include <stddef.h>
 
+#ifdef __STDC_VERSION
 #if __STDC_VERSION__ >= 199901L
 #include <stdint.h>
 #else
-typedef uintptr_t unsigned int *;
-typedef intptr_t int *;
-#if defined(__x86_64__)
-typedef int64_t long;
-typedef uint64_t unsigned long;
+typedef unsigned int * uintptr_t;
+typedef int * intptr_t;
+#if __WORDSIZE == 64
+#define __INT64_C(c)	c ## L
+#define __UINT64_C(c)	c ## UL
+#define SIZE_MAX		(18446744073709551615UL)
+typedef long int64_t;
+typedef unsigned long uint64_t;
 #else
-typedef int64_t long long;
-typedef uint64_t unsigned long long;
+#define __INT64_C(c)	c ## LL
+#define __UINT64_C(c)	c ## ULL
+#ifdef __WORDSIZE32_SIZE_ULONG
+#define SIZE_MAX		(4294967295UL)
+#else
+#define SIZE_MAX		(4294967295U)
 #endif
-typedef int32_t int;
-typedef uint32_t unsigned int;
-typedef int16_t short;
-typedef uint16_t unsigned short;
-typedef int8_t char;
-typedef uint8_t unsigned char;
+typedef long long int64_t;
+typedef unsigned long long uint64_t;
+#endif
+# define INT64_MAX		(__INT64_C(9223372036854775807))
+# define UINT64_MAX		(__UINT64_C(18446744073709551615))
+typedef int int32_t;
+#define INT32_MAX		(2147483647)
+typedef unsigned int uint32_t;
+# define UINT32_MAX		(4294967295U)
+typedef short int16_t;
+# define INT16_MAX		(32767)
+typedef unsigned short uint16_t;
+# define UINT16_MAX		(65535)
+typedef char int8_t;
+# define INT8_MAX		(127)
+typedef unsigned char uint8_t;
+# define UINT8_MAX		(255)
+#endif
+#else
+#include <stdint.h>
 #endif
 
 typedef uint32_t jit_error;
@@ -62,10 +88,11 @@ enum e_jit_targets {
 enum e_jit_errors {
     JIT_SUCCESS = 0,
     JIT_ERROR_UNKNOWN,
-    JIT_ERROR_NO_MORE_VREGS,    // Somehow, we used over 2 billion jit registers
+    JIT_ERROR_NO_MORE_VREGS,
     JIT_ERROR_NULL_PTR,
     JIT_ERROR_MALLOC,
     JIT_ERROR_VREG_NOT_FOUND,
+    JIT_ERROR_REG_BUSY,
     JIT_MAX,
 };
 
@@ -85,6 +112,7 @@ enum e_jit_operand {
     JIT_OPERAND_IMM,
     JIT_OPERAND_REGPTR,
     JIT_OPERAND_IMMPTR,
+    JIT_OPERAND_IMMDISP,
 };
 
 typedef enum e_jit_operand jit_operand;
@@ -98,33 +126,48 @@ enum e_jit_register {
 
 typedef enum e_jit_register jit_register;
 
+enum e_jit_regmap {
+    JIT_REGMAP_NONE = 0,
+    JIT_REGMAP_CALL_ARG0,
+    JIT_REGMAP_CALL_ARG1,
+    JIT_REGMAP_CALL_ARG2,
+    JIT_REGMAP_CALL_ARG3,
+    JIT_REGMAP_CALL_ARG4,
+    JIT_REGMAP_CALL_ARG5,
+    JIT_REGMAP_CALL_RET,
+};
+
+typedef enum e_jit_regmap jit_regmap;
+
 enum e_jit_op {
     JIT_OP_INVALID = -1,
-    JIT_OP_NOP = 0,
-    JIT_OP_MOVE,
-    JIT_OP_ADD,
-    JIT_OP_SUB,
-    JIT_OP_MUL,
-    JIT_OP_DIV,
-    JIT_OP_SHL,
-    JIT_OP_SHR,
-    JIT_OP_AND,
-    JIT_OP_OR,
-    JIT_OP_XOR,
-    JIT_OP_CALL,
-    JIT_OP_JUMP,
-    JIT_OP_JUMP_IF,
-    JIT_OP_RET,
+   
+    JIT_OP_NOP  = 0,
+    JIT_OP_MOVE = 1,
+    JIT_OP_ADD  = 2,
+    JIT_OP_SUB  = 3,
+    JIT_OP_MUL  = 4,
+    JIT_OP_DIV  = 5,
+    JIT_OP_SHL  = 6,
+    JIT_OP_SHR  = 7, 
+    JIT_OP_AND  = 8,
+    JIT_OP_OR   = 9,
+    JIT_OP_XOR  = 10,
+    JIT_OP_CALL = 11,
+    JIT_OP_JUMP = 12,
+    JIT_OP_JUMP_IF = 13,
+    JIT_OP_RET  = 14,
+    
     JIT_NUM_OPS,
 };
 
 typedef enum e_jit_op jit_op;
 
 struct jit_pointer {
-    intptr_t base;
-    size_t index;
-    size_t scale;
-    size_t offset;
+    register_t base;
+    register_t index;
+    int32_t scale;
+    int32_t offset;
 };
 
 union u_jit_operand_union {
@@ -135,7 +178,12 @@ union u_jit_operand_union {
     int16_t imm16;
     int8_t imm8;
 
-    struct jit_pointer ptr;
+    struct jit_pointer regptr;
+    int32_t *m32ptr;
+    int32_t *m16ptr;
+    int32_t *m8ptr;
+    
+    void *ptr;
 };
 
 typedef union u_jit_operand_union jit_operand_union;
@@ -163,6 +211,22 @@ struct jit_instruction {
 #define MOVE_I_R_32(i,a,b) {(i)->op=JIT_OP_MOVE; \
     (i)->in1_type=JIT_OPERAND_IMM; (i)->out_type=JIT_OPERAND_REG; \
     (i)->in1.imm32=a; (i)->out.reg=b; }
+#define MOVE_ID_R_32(i,a,b) {(i)->op=JIT_OP_MOVE; \
+    (i)->in1_type=JIT_OPERAND_IMMDISP; (i)->out_type=JIT_OPERAND_REG; \
+    (i)->in1.ptr=a; (i)->out.reg=b; }
+#define MOVE_M_R_32(i,a,b) {(i)->op=JIT_OP_MOVE; \
+    (i)->in1_type=JIT_OPERAND_IMMPTR; (i)->out_type=JIT_OPERAND_REG; \
+    (i)->in1.m32ptr=a; (i)->out.reg=b; }
+#define MOVE_R_M_32(i,a,b) {(i)->op=JIT_OP_MOVE; \
+    (i)->in1_type=JIT_OPERAND_REG; (i)->out_type=JIT_OPERAND_IMMPTR; \
+    (i)->in1.reg=a; (i)->out.m32ptr=b; }
+#define MOVE_RP_R_32(i,b,n,s,o,r) {(i)->op=JIT_OP_MOVE; \
+    (i)->in1_type=JIT_OPERAND_REGPTR; (i)->out_type=JIT_OPERAND_REG; \
+    (i)->in1.regptr.base=b; (i)->in1.regptr.index=n; \
+    (i)->in1.regptr.scale=s; (i)->in1.regptr.offset=o; (i)->out.reg=r; }
+
+#define CALL_M_32(i,a) {(i)->op=JIT_OP_CALL; \
+    (i)->in1_type=JIT_OPERAND_IMMPTR; (i)->in1.m32ptr=a; }
 
 #define OP_R_R_R_32(i,o,a,b,c) {(i)->op=(o); \
     (i)->in1_type=(i)->in2_type=(i)->out_type=JIT_OPERAND_REG; \
@@ -178,6 +242,8 @@ struct jit_instruction {
 #define SUB_I_R_R_32(i,a,b,c) OP_I_R_R_32((i),JIT_OP_SUB,(a),(b),(c))
 #define AND_R_R_R_32(i,a,b,c) OP_R_R_R_32((i),JIT_OP_AND,(a),(b),(c))
 #define AND_I_R_R_32(i,a,b,c) OP_I_R_R_32((i),JIT_OP_AND,(a),(b),(c))
+#define XOR_R_R_R_32(i,a,b,c) OP_R_R_R_32((i),JIT_OP_XOR,(a),(b),(c))
+#define XOR_I_R_R_32(i,a,b,c) OP_I_R_R_32((i),JIT_OP_XOR,(a),(b),(c))
 
 
 struct jit_emitter;
@@ -227,6 +293,11 @@ jit_error jit_end_block(struct jit_state *s);
 
 jit_register jit_register_new(struct jit_state *s);
 
+jit_register jit_register_new_constrained(struct jit_state *s,
+        int32_t map);
+jit_error jit_set_register_mapping(struct jit_state *s,
+        jit_register r, int32_t map);
+
 
 /* Append a given instruction to the state's instrcution sequence. */
 
@@ -247,5 +318,9 @@ jit_error jit_emit_call(struct jit_state *s, struct jit_instruction *i);
 jit_error jit_emit_jump(struct jit_state *s, struct jit_instruction *i);
 jit_error jit_emit_jump_if(struct jit_state *s, struct jit_instruction *i);
 jit_error jit_emit_ret(struct jit_state *s, struct jit_instruction *i);
+
+#ifdef __CPLUSPLUS
+}
+#endif
 
 #endif
