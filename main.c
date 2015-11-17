@@ -12,12 +12,14 @@ int dummyfn(int a, int b, int c)
     return (a + b + c);
 }
 
+#define NUM_INSTRS 5
+
 int main(int argc, char *argv[])
 {
     jit_state *s;
     jit_error e = JIT_SUCCESS;
-    struct jit_instruction *i[10];
-    jit_register r[10];
+    struct jit_instr *i[NUM_INSTRS];
+    jit_reg r[10];
 
     void *buffer = NULL;
     void *abuffer = NULL;
@@ -46,35 +48,33 @@ int main(int argc, char *argv[])
     // Create a "movl $100, %eax" type instruction
     printf("Creating jit v-instruction list\n");
    
-    for(; n < 10; n++) {
-        i[n] = jit_instruction_new(s);
+    for(; n < NUM_INSTRS; n++) {
+        i[n] = jit_instr_new(s);
     }
     // memset(s.vm, 0, 320*240);
     // s.bgc = 0;
     
     //dummy[5] = 666;
     
-    r[0] = jit_register_new_constrained(s, JIT_REGMAP_CALL_ARG0);
-    MOVE_I_R_32(i[0], 1, r[0]);
-    r[1] = jit_register_new_constrained(s, JIT_REGMAP_CALL_ARG1);
-    MOVE_I_R_32(i[1], 10, r[1]);
-    r[2] = jit_register_new_constrained(s, JIT_REGMAP_CALL_ARG2);
-    MOVE_I_R_32(i[2], 100, r[2]);
-    CALL_M_32(i[3], (int32_t*)dummyfn);
-    //MOVE_ID_R_32(i[0], dummy, r[0]);
-    //r[1] = jit_register_new_constrained(s, JIT_REGMAP_CALL_RET);
-    //MOVE_RP_R_32(i[1], r[0], JIT_REGISTER_INVALID, 1, 5*sizeof(int), r[1]); 
+    r[0] = jit_reg_new_fixed(s, JIT_REGMAP_CALL_ARG0);
+    MOVE_I_R(i[0], 1, r[0], JIT_32BIT);
+    r[1] = jit_reg_new_fixed(s, JIT_REGMAP_CALL_ARG1);
+    MOVE_I_R(i[1], 10, r[1], JIT_32BIT);
+    r[2] = jit_reg_new_fixed(s, JIT_REGMAP_CALL_ARG2);
+    MOVE_I_R(i[2], 100, r[2], JIT_32BIT);
+    CALL_M(i[3], (int32_t*)dummyfn, JIT_32BIT);
+    //MOVE_ID_R(i[0], dummy, r[0]);
+    //r[1] = jit_reg_new_fixed(s, JIT_REGMAP_CALL_RET);
+    //MOVE_RP_R(i[1], r[0], JIT_REG_INVALID, 1, 5*sizeof(int), r[1]); 
     i[4]->op = JIT_OP_RET;
     
 
     // Emit code
     printf("Emitting code to jit buffer\n");
     jit_begin_block(s, abuffer);
-    jit_emit_move(s, i[0]);
-    jit_emit_move(s, i[1]);
-    jit_emit_move(s, i[2]);
-    jit_emit_call(s, i[3]);
-    jit_emit_ret(s, i[4]);
+    for(n = 0; n < NUM_INSTRS; n++) {
+        jit_emit_instr(s, i[n]);
+    }
     jit_end_block(s);
 
     printf("Attempting to mprotect buffer %p (page-aligned from %p)\n",

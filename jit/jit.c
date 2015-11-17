@@ -49,8 +49,8 @@ jit_create(struct jit_state **s, jit_flags flags)
         FAILPATH(JIT_ERROR_MALLOC);
     }
 
-    (*s)->__g_pipool = (struct jit_instruction *) calloc(__JIT_POOL_ALLOC,
-            sizeof(struct jit_instruction));
+    (*s)->__g_pipool = (struct jit_instr *) calloc(__JIT_POOL_ALLOC,
+            sizeof(struct jit_instr));
     if((*s)->__g_pipool == NULL) {
         FAILPATH(JIT_ERROR_MALLOC);
     }
@@ -72,10 +72,10 @@ jit_destroy(struct jit_state *s)
     return JIT_SUCCESS;
 }
 
-jit_register
-jit_register_new(struct jit_state *s)
+jit_reg
+jit_reg_new(struct jit_state *s)
 {
-    jit_register r = JIT_REGISTER_INVALID;
+    jit_reg r = JIT_REG_INVALID;
 
     if(s->regcur < INT32_MAX) { 
         r = s->regcur++;
@@ -85,30 +85,30 @@ jit_register_new(struct jit_state *s)
     return r;
 }
 
-jit_register
-jit_register_new_constrained(struct jit_state *s, int32_t map)
+jit_reg
+jit_reg_new_fixed(struct jit_state *s, int32_t map)
 {
-    jit_register r = jit_register_new(s);
-    jit_set_register_mapping(s, r, map);
+    jit_reg r = jit_reg_new(s);
+    jit_set_reg_mapping(s, r, map);
     return r;
 }
 
-struct jit_instruction*
-jit_instruction_new(struct jit_state *s)
+struct jit_instr*
+jit_instr_new(struct jit_state *s)
 {
-    struct jit_instruction *i = NULL;
+    struct jit_instr *i = NULL;
 
     // Grow the pool if needed.
     if(s->__g_nicur == s->__g_nipool) {
         s->__g_nipool += __JIT_POOL_ALLOC;
-        s->__g_pipool = (struct jit_instruction *) realloc(s->__g_pipool,
+        s->__g_pipool = (struct jit_instr *) realloc(s->__g_pipool,
                 s->__g_nipool * __JIT_POOL_ALLOC);
         if(s->__g_pipool == NULL) {
             goto l_exit;
         }
     }
 
-    //printf("creating instruction %zu\n", s->blk_ni);
+    //printf("creating instr %zu\n", s->blk_ni);
     i = &s->__g_pipool[s->__g_nicur];
     if(s->p_icur) {
         s->p_icur->next = i; 
@@ -153,10 +153,10 @@ jit_end_block(struct jit_state *s)
 }
 
 jit_error
-jit_register_life(struct jit_state *s, jit_register reg, size_t *start,
+jit_reg_life(struct jit_state *s, jit_reg reg, size_t *start,
         size_t *end)
 {
-    struct jit_instruction *i = NULL;
+    struct jit_instr *i = NULL;
     jit_error e = JIT_SUCCESS;
     size_t n, first, last;
 

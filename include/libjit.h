@@ -120,11 +120,11 @@ typedef enum e_jit_operand jit_operand;
 /* Virtual registers in the jit are (near) infinite, and monotonically increase.
  *
  * Valid jit register indexes number from 0 to INT32_MAX. */
-enum e_jit_register {
-    JIT_REGISTER_INVALID = -1,
+enum e_jit_reg {
+    JIT_REG_INVALID = -1,
 };
 
-typedef enum e_jit_register jit_register;
+typedef enum e_jit_reg jit_reg;
 
 enum e_jit_regmap {
     JIT_REGMAP_NONE = 0,
@@ -163,9 +163,9 @@ enum e_jit_op {
 
 typedef enum e_jit_op jit_op;
 
-struct jit_pointer {
-    jit_register base;
-    jit_register index;
+struct jit_ptr {
+    jit_reg base;
+    jit_reg index;
     int32_t scale;
     int32_t offset;
 };
@@ -178,7 +178,7 @@ union u_jit_operand_union {
     int16_t imm16;
     int8_t imm8;
 
-    struct jit_pointer regptr;
+    struct jit_ptr regptr;
     int32_t *m32ptr;
     int32_t *m16ptr;
     int32_t *m8ptr;
@@ -188,8 +188,8 @@ union u_jit_operand_union {
 
 typedef union u_jit_operand_union jit_operand_union;
 
-struct jit_instruction;
-struct jit_instruction {
+struct jit_instr;
+struct jit_instr {
     jit_op op;
 
     jit_operand in1_type;
@@ -200,67 +200,81 @@ struct jit_instruction {
     jit_operand_union in2;
     jit_operand_union out;
 
-    uintptr_t branch_dest;
+    size_t opsz;
 
-    struct jit_instruction *next;
+    struct jit_instr *next;
 };
 
-#define MOVE_R_R_32(i,a,b) {(i)->op=JIT_OP_MOVE; \
+enum e_jit_opsz {
+    JIT_8BIT = 1,
+    JIT_16BIT = 2,
+    JIT_32BIT = 4,
+    JIT_64BIT = 8,
+};
+
+#define MOVE_R_R(i,a,b,s) (i)->op=JIT_OP_MOVE; \
     (i)->in1_type=(i)->out_type=JIT_OPERAND_REG; \
-    (i)->in1.reg=a; (i)->out.reg=b; }
-#define MOVE_I_R_32(i,a,b) {(i)->op=JIT_OP_MOVE; \
+    (i)->in1.reg=a; (i)->out.reg=b; (i)->opsz=s
+#define MOVE_I_R(i,a,b,s) (i)->op=JIT_OP_MOVE; \
     (i)->in1_type=JIT_OPERAND_IMM; (i)->out_type=JIT_OPERAND_REG; \
-    (i)->in1.imm32=a; (i)->out.reg=b; }
-#define MOVE_ID_R_32(i,a,b) {(i)->op=JIT_OP_MOVE; \
+    (i)->in1.imm32=a; (i)->out.reg=b; (i)->opsz=s
+#define MOVE_ID_R(i,a,b,s) (i)->op=JIT_OP_MOVE; \
     (i)->in1_type=JIT_OPERAND_IMMDISP; (i)->out_type=JIT_OPERAND_REG; \
-    (i)->in1.ptr=a; (i)->out.reg=b; }
-#define MOVE_M_R_32(i,a,b) {(i)->op=JIT_OP_MOVE; \
+    (i)->in1.ptr=a; (i)->out.reg=b; (i)->opsz=s
+#define MOVE_M_R(i,a,b,s) (i)->op=JIT_OP_MOVE; \
     (i)->in1_type=JIT_OPERAND_IMMPTR; (i)->out_type=JIT_OPERAND_REG; \
-    (i)->in1.m32ptr=a; (i)->out.reg=b; }
-#define MOVE_R_M_32(i,a,b) {(i)->op=JIT_OP_MOVE; \
+    (i)->in1.m32ptr=a; (i)->out.reg=b; (i)->opsz=s
+#define MOVE_R_M(i,a,b,s) (i)->op=JIT_OP_MOVE; \
     (i)->in1_type=JIT_OPERAND_REG; (i)->out_type=JIT_OPERAND_IMMPTR; \
-    (i)->in1.reg=a; (i)->out.m32ptr=b; }
-#define MOVE_RP_R_32(i,b,n,s,o,r) {(i)->op=JIT_OP_MOVE; \
+    (i)->in1.reg=a; (i)->out.m32ptr=b; (i)->opsz=s
+#define MOVE_RP_R(i,b,n,s,o,r,z) (i)->op=JIT_OP_MOVE; \
     (i)->in1_type=JIT_OPERAND_REGPTR; (i)->out_type=JIT_OPERAND_REG; \
     (i)->in1.regptr.base=b; (i)->in1.regptr.index=n; \
-    (i)->in1.regptr.scale=s; (i)->in1.regptr.offset=o; (i)->out.reg=r; }
+    (i)->in1.regptr.scale=s; (i)->in1.regptr.offset=o;\
+    (i)->out.reg=r; (i)->opsz=z
 
-#define CALL_M_32(i,a) {(i)->op=JIT_OP_CALL; \
-    (i)->in1_type=JIT_OPERAND_IMMPTR; (i)->in1.m32ptr=a; }
+#define CALL_M(i,a,s) (i)->op=JIT_OP_CALL; \
+    (i)->in1_type=JIT_OPERAND_IMMPTR; (i)->in1.m32ptr=a; (i)->opsz=s
 
-#define OP_R_R_R_32(i,o,a,b,c) {(i)->op=(o); \
+#define OP_R_R_R(i,o,a,b,c,s) (i)->op=(o); \
     (i)->in1_type=(i)->in2_type=(i)->out_type=JIT_OPERAND_REG; \
-    (i)->in1.reg=a; (i)->in2.reg=b; (i)->out.reg=c; }
-#define OP_I_R_R_32(i,o,a,b,c) {(i)->op=(o); \
+    (i)->in1.reg=a; (i)->in2.reg=b; (i)->out.reg=c; (i)->opsz=s
+#define OP_I_R_R(i,o,a,b,c,s) (i)->op=(o); \
     (i)->in1_type=JIT_OPERAND_IMM; \
     (i)->in2_type=(i)->out_type=JIT_OPERAND_REG; \
-    (i)->in1.imm32=a; (i)->in2.reg=b; (i)->out.reg=c; }
+    (i)->in1.imm32=a; (i)->in2.reg=b; (i)->out.reg=c; (i)->opsz=s
 
-#define ADD_R_R_R_32(i,a,b,c) OP_R_R_R_32((i),JIT_OP_ADD,(a),(b),(c))
-#define ADD_I_R_R_32(i,a,b,c) OP_I_R_R_32((i),JIT_OP_ADD,(a),(b),(c))
-#define SUB_R_R_R_32(i,a,b,c) OP_R_R_R_32((i),JIT_OP_SUB,(a),(b),(c))
-#define SUB_I_R_R_32(i,a,b,c) OP_I_R_R_32((i),JIT_OP_SUB,(a),(b),(c))
-#define AND_R_R_R_32(i,a,b,c) OP_R_R_R_32((i),JIT_OP_AND,(a),(b),(c))
-#define AND_I_R_R_32(i,a,b,c) OP_I_R_R_32((i),JIT_OP_AND,(a),(b),(c))
-#define XOR_R_R_R_32(i,a,b,c) OP_R_R_R_32((i),JIT_OP_XOR,(a),(b),(c))
-#define XOR_I_R_R_32(i,a,b,c) OP_I_R_R_32((i),JIT_OP_XOR,(a),(b),(c))
+#define ADD_R_R_R(i,a,b,c,s) OP_R_R_R((i),JIT_OP_ADD,(a),(b),(c),(s))
+#define ADD_I_R_R(i,a,b,c,s) OP_I_R_R((i),JIT_OP_ADD,(a),(b),(c),(s))
+#define SUB_R_R_R(i,a,b,c,s) OP_R_R_R((i),JIT_OP_SUB,(a),(b),(c),(s))
+#define SUB_I_R_R(i,a,b,c,s) OP_I_R_R((i),JIT_OP_SUB,(a),(b),(c),(s))
+#define AND_R_R_R(i,a,b,c,s) OP_R_R_R((i),JIT_OP_AND,(a),(b),(c),(s))
+#define AND_I_R_R(i,a,b,c,s) OP_I_R_R((i),JIT_OP_AND,(a),(b),(c),(s))
+#define XOR_R_R_R(i,a,b,c,s) OP_R_R_R((i),JIT_OP_XOR,(a),(b),(c),(s))
+#define XOR_I_R_R(i,a,b,c,s) OP_I_R_R((i),JIT_OP_XOR,(a),(b),(c),(s))
 
 
 struct jit_emitter;
 
 struct jit_state {
-    size_t blk_ni;          // Number of instructions in the basic block.
-    size_t blk_nb;          // Number of bytes in the basic block.
-    struct jit_instruction *blk_is;
+    /* Number of instructions in the basic block.*/
+    size_t blk_ni;
+    /* Number of bytes in the basic block. */
+    size_t blk_nb;
+    struct jit_instr *blk_is;
 
-    uint8_t *p_bufstart;    // Pointer to start of block code buffer.
-    uint8_t *p_bufcur;      // Pointer to current location in code buffer.
+    /* Pointer to start of block code buffer. */
+    uint8_t *p_bufstart;
+    /* Pointer to current location in code buffer. */
+    uint8_t *p_bufcur;
 
-    int32_t regcur;         // Current highest jit register index.
-    struct jit_instruction *p_icur;  // Last instruction added
+    /* Current highest jit register index. */
+    int32_t regcur;
+    /* Last instruction added. */
+    struct jit_instr *p_icur;
 
-    // Internal use
-    struct jit_instruction *__g_pipool;
+    /* Internal book-keeping. */
+    struct jit_instr *__g_pipool;
     size_t __g_nipool;
     size_t __g_nicur;
 
@@ -289,19 +303,19 @@ jit_error jit_begin_block(struct jit_state *s, void *buf);
 jit_error jit_end_block(struct jit_state *s);
 
 
-/* Allocate a new register and return its index. */
+/* Allocate a new reg and return its index. */
 
-jit_register jit_register_new(struct jit_state *s);
+jit_reg jit_reg_new(struct jit_state *s);
 
-jit_register jit_register_new_constrained(struct jit_state *s,
+jit_reg jit_reg_new_fixed(struct jit_state *s,
         int32_t map);
-jit_error jit_set_register_mapping(struct jit_state *s,
-        jit_register r, int32_t map);
+jit_error jit_set_reg_mapping(struct jit_state *s,
+        jit_reg r, int32_t map);
 
 
 /* Append a given instruction to the state's instrcution sequence. */
 
-struct jit_instruction* jit_instruction_new(struct jit_state *s);
+struct jit_instr* jit_instr_new(struct jit_state *s);
 
 jit_label jit_label_here(struct jit_state *s);
 
@@ -310,14 +324,16 @@ jit_error jit_create_emitter(struct jit_state *s);
 jit_error jit_destroy_emitter(struct jit_state *s);
 
 /* Return start and end of a register's liveness (or life). */
-jit_error jit_register_life(struct jit_state *s, jit_register reg, size_t *start, size_t *end);
+jit_error jit_reg_life(struct jit_state *s, jit_reg reg, size_t *start, size_t *end);
 
-jit_error jit_emit_move(struct jit_state *s, struct jit_instruction *i);
-jit_error jit_emit_arith(struct jit_state *s, struct jit_instruction *i);
-jit_error jit_emit_call(struct jit_state *s, struct jit_instruction *i);
-jit_error jit_emit_jump(struct jit_state *s, struct jit_instruction *i);
-jit_error jit_emit_jump_if(struct jit_state *s, struct jit_instruction *i);
-jit_error jit_emit_ret(struct jit_state *s, struct jit_instruction *i);
+jit_error jit_emit_instr(struct jit_state *s, struct jit_instr *i);
+
+jit_error jit_emit_move(struct jit_state *s, struct jit_instr *i);
+jit_error jit_emit_arith(struct jit_state *s, struct jit_instr *i);
+jit_error jit_emit_call(struct jit_state *s, struct jit_instr *i);
+jit_error jit_emit_jump(struct jit_state *s, struct jit_instr *i);
+jit_error jit_emit_jump_if(struct jit_state *s, struct jit_instr *i);
+jit_error jit_emit_ret(struct jit_state *s, struct jit_instr *i);
 
 #ifdef __CPLUSPLUS
 }
