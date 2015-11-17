@@ -60,7 +60,7 @@ struct jit_host_ptr {
 
 static const jit_host_reg g_regmap[] = {
     JIT_HOST_REG_INVALID,
-    rdi, rsi, rdx, rcx, r8, r9, rax,
+    rdi, rsi, rdx, rcx, r8, r9, rax, rsp,
 };
 
 static const char *g_opsz[JIT_NUM_OPS] = {
@@ -100,6 +100,8 @@ uint8_t* jit_emit__xor_reg_to_reg(uint8_t *p, jit_host_reg regin, jit_host_reg r
 uint8_t* jit_emit__xor_imm32_to_reg(uint8_t *p, int32_t imm, jit_host_reg regout);
 uint8_t* jit_emit__call_m32(uint8_t *p, void *m);
 uint8_t* jit_emit__ret(uint8_t *p);
+uint8_t* jit_emit__push_reg(uint8_t *p, jit_host_reg regout);
+uint8_t* jit_emit__pop_reg(uint8_t *p, jit_host_reg regout);
 
 static const pfn_e_r_to_r g_e_r_to_r[JIT_NUM_OPS] = {
     NULL,
@@ -295,6 +297,12 @@ jit_emit_instr(struct jit_state *s, struct jit_instr *i)
         case JIT_OP_JUMP_IF:
             e = jit_emit_jump_if(s, i);
             break;
+        case JIT_OP_PUSH:
+            e = jit_emit_push(s, i);
+            break;
+        case JIT_OP_POP:
+            e = jit_emit_pop(s, i);
+            break;
         default:
             printf("error: emitter cannot handle op type %d\n", i->op);
             break;
@@ -462,6 +470,46 @@ jit_emit_ret(struct jit_state *s, struct jit_instr *i)
     s->blk_nb += (s->p_bufcur - begin);
 
 l_exit:
+    return e;
+}
+
+jit_error
+jit_emit_push(struct jit_state *s, struct jit_instr *i)
+{
+    jit_error e = JIT_SUCCESS;
+    uint8_t *begin = s->p_bufcur;
+    size_t n;
+    jit_host_reg hostreg = jit_get_mapped_host_reg(s, i->in1.reg);
+
+    s->p_bufcur = jit_emit__push_reg(s->p_bufcur, hostreg);
+
+    printf("> push:\t");
+    for(n = 0; n < (s->p_bufcur - begin); n++)
+        printf("%02x ", begin[n]);
+    printf("\n");
+
+    s->blk_nb += (s->p_bufcur - begin);
+
+    return e;
+}
+
+jit_error
+jit_emit_pop(struct jit_state *s, struct jit_instr *i)
+{
+    jit_error e = JIT_SUCCESS;
+    uint8_t *begin = s->p_bufcur;
+    size_t n;
+    jit_host_reg hostreg = jit_get_mapped_host_reg(s, i->in1.reg);
+
+    s->p_bufcur = jit_emit__pop_reg(s->p_bufcur, hostreg);
+
+    printf("> pop:\t");
+    for(n = 0; n < (s->p_bufcur - begin); n++)
+        printf("%02x ", begin[n]);
+    printf("\n");
+
+    s->blk_nb += (s->p_bufcur - begin);
+
     return e;
 }
 
@@ -686,10 +734,24 @@ uint8_t*
 jit_emit__ret(uint8_t *p)
 {
     *p++ = 0xc3;
-
     return p;
 }
 
+uint8_t*
+jit_emit__push_reg(uint8_t *p, jit_host_reg regout)
+{
+    if(NEED_REX(regout)) *p++ = REX_B;
+    *p++ = 0x50 + HOSTREG(regout);
+    return p;
+}
+
+uint8_t*
+jit_emit__pop_reg(uint8_t *p, jit_host_reg regout)
+{
+    if(NEED_REX(regout)) *p++ = REX_B;
+    *p++ = 0x58 + HOSTREG(regout);
+    return p;
+}
 
 #ifdef __CPLUSPLUS
 }

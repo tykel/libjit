@@ -135,6 +135,7 @@ enum e_jit_regmap {
     JIT_REGMAP_CALL_ARG4,
     JIT_REGMAP_CALL_ARG5,
     JIT_REGMAP_CALL_RET,
+    JIT_REGMAP_SP,
 };
 
 typedef enum e_jit_regmap jit_regmap;
@@ -157,6 +158,8 @@ enum e_jit_op {
     JIT_OP_JUMP = 12,
     JIT_OP_JUMP_IF = 13,
     JIT_OP_RET  = 14,
+    JIT_OP_PUSH = 15,
+    JIT_OP_POP  = 16,
     
     JIT_NUM_OPS,
 };
@@ -235,6 +238,13 @@ enum e_jit_opsz {
 
 #define CALL_M(i,a,s) (i)->op=JIT_OP_CALL; \
     (i)->in1_type=JIT_OPERAND_IMMPTR; (i)->in1.m32ptr=a; (i)->opsz=s
+
+#define PUSH_R(i,a,s) (i)->op=JIT_OP_PUSH; \
+    (i)->in1_type=JIT_OPERAND_REG; (i)->in1.reg=a; (i)->opsz=s
+#define POP_R(i,a,s) (i)->op=JIT_OP_POP; \
+    (i)->in1_type=JIT_OPERAND_REG; (i)->in1.reg=a; (i)->opsz=s
+
+#define RET(i) (i)->op=JIT_OP_RET
 
 #define OP_R_R_R(i,o,a,b,c,s) (i)->op=(o); \
     (i)->in1_type=(i)->in2_type=(i)->out_type=JIT_OPERAND_REG; \
@@ -334,6 +344,8 @@ jit_error jit_emit_call(struct jit_state *s, struct jit_instr *i);
 jit_error jit_emit_jump(struct jit_state *s, struct jit_instr *i);
 jit_error jit_emit_jump_if(struct jit_state *s, struct jit_instr *i);
 jit_error jit_emit_ret(struct jit_state *s, struct jit_instr *i);
+jit_error jit_emit_push(struct jit_state *s, struct jit_instr *i);
+jit_error jit_emit_pop(struct jit_state *s, struct jit_instr *i);
 
 #ifdef __CPLUSPLUS
 }

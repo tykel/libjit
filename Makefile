@@ -22,8 +22,8 @@ all: testjit $(ARCHIVE)
 $(ARCHIVE): $(LIB) $(INCLUDE)/libjit.h LICENSE
 	$(TAR) -czf $@ $^
 
-testjit: main.c $(LIB) $(HEADERS)
-	$(CC) $(CFLAGS) -o $@ main.c $(LIB) -Wl,-rpath=$(DIR) -L./ -ljit
+testjit: test.c $(LIB) $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ test.c $(LIB) -Wl,-rpath=$(DIR) -L./ -ljit
 
 $(LIB): $(OBJECTS) $(HEADERS)
 	$(LD) $(LDFLAGS) -o $@ $(OBJECTS)
