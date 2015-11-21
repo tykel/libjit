@@ -236,6 +236,12 @@ enum e_jit_opsz {
     (i)->in1.regptr.base=b; (i)->in1.regptr.index=n; \
     (i)->in1.regptr.scale=s; (i)->in1.regptr.offset=o;\
     (i)->out.reg=r; (i)->opsz=z
+#define MOVE_R_RP(i,r,b,n,s,o,z) (i)->op=JIT_OP_MOVE; \
+    (i)->in1_type=JIT_OPERAND_REG; (i)->out_type=JIT_OPERAND_REGPTR; \
+    (i)->in1.reg=r; \
+    (i)->out.regptr.base=b; (i)->out.regptr.index=n; \
+    (i)->out.regptr.scale=s; (i)->out.regptr.offset=o; \
+    (i)->opsz=z
 
 #define CALL_M(i,a,s) (i)->op=JIT_OP_CALL; \
     (i)->in1_type=JIT_OPERAND_IMMPTR; (i)->in1.m32ptr=a; (i)->opsz=s

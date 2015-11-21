@@ -34,10 +34,9 @@ l_exit:
 jit_error test_call(void)
 {
 #undef NUM_INSTRS
-#define NUM_INSTRS 4
+#define NUM_INSTRS 2
     jit_state *s;
     struct jit_instr *i[NUM_INSTRS];
-    jit_reg r_sp; 
     jit_error e = JIT_SUCCESS;
     int res = 0;
 
@@ -45,7 +44,7 @@ jit_error test_call(void)
     void *abuffer = NULL;
     size_t n;
     
-    printf("-- test_call\n");
+    printf("-- test_call: testing RIP-relative function call\n--\n");
     e = jit_create(&s, JIT_FLAG_NONE);
     buffer = calloc(4096*1 + 4096, 1);
     abuffer = (void *)(((uintptr_t)buffer + 4096 - 1) & ~(4096 - 1));
@@ -53,11 +52,8 @@ jit_error test_call(void)
         i[n] = jit_instr_new(s);
     }
     
-    r_sp = jit_reg_new_fixed(s, JIT_REGMAP_SP);
-    PUSH_R(i[0], r_sp, JIT_32BIT);
-    CALL_M(i[1], (int32_t*)dummyfn0, JIT_32BIT);
-    POP_R(i[2], r_sp, JIT_32BIT);
-    RET(i[3]);
+    CALL_M(i[0], (int32_t*)dummyfn0, JIT_32BIT);
+    RET(i[1]);
 
     jit_begin_block(s, abuffer);
     for(n = 0; n < NUM_INSTRS; n++) {
@@ -81,7 +77,7 @@ jit_error test_call(void)
 jit_error test_move(void)
 {
 #undef NUM_INSTRS
-#define NUM_INSTRS 5
+#define NUM_INSTRS 8
     jit_state *s;
     jit_error e = JIT_SUCCESS;
     struct jit_instr *i[NUM_INSTRS];
@@ -92,7 +88,7 @@ jit_error test_move(void)
     size_t n = 0;
     int res = -1;
     
-    printf("-- test_move\n");
+    printf("-- test_move: Testing register transfers\n--\n");
     e = jit_create(&s, JIT_FLAG_NONE);
     buffer = malloc(8192* sizeof(uint8_t));
     abuffer = (void *)(((uintptr_t)buffer + 4096 - 1) & ~(4096 - 1));
@@ -100,14 +96,19 @@ jit_error test_move(void)
         i[n] = jit_instr_new(s);
     }
     
-    r[0] = jit_reg_new_fixed(s, JIT_REGMAP_CALL_ARG0);
+        r[0] = jit_reg_new_fixed(s, JIT_REGMAP_CALL_ARG0);
     MOVE_I_R(i[0], 1, r[0], JIT_32BIT);
-    r[1] = jit_reg_new_fixed(s, JIT_REGMAP_CALL_ARG1);
+        r[1] = jit_reg_new_fixed(s, JIT_REGMAP_CALL_ARG1);
     MOVE_I_R(i[1], 10, r[1], JIT_32BIT);
-    r[2] = jit_reg_new_fixed(s, JIT_REGMAP_CALL_ARG2);
+        r[2] = jit_reg_new_fixed(s, JIT_REGMAP_CALL_ARG2);
     MOVE_I_R(i[2], 100, r[2], JIT_32BIT);
     CALL_M(i[3], (int32_t*)dummyfn3, JIT_32BIT);
-    RET(i[4]);
+        r[3] = jit_reg_new_fixed(s, JIT_REGMAP_CALL_RET);
+        r[4] = jit_reg_new(s);
+    MOVE_R_R(i[4], r[3], r[4], JIT_32BIT);
+    MOVE_I_R(i[5], 0, r[3], JIT_32BIT);
+    MOVE_R_R(i[6], r[4], r[3], JIT_32BIT);
+    RET(i[7]);
 
     jit_begin_block(s, abuffer);
     for(n = 0; n < NUM_INSTRS; n++) {
@@ -142,7 +143,7 @@ jit_error test_regs(void)
     size_t n = 0;
     int res = -1;
     
-    printf("-- test_regs\n");
+    printf("-- test_regs: Testing register allocation/spill/restore\n--\n");
     e = jit_create(&s, JIT_FLAG_NONE);
     buffer = malloc(8192* sizeof(uint8_t));
     abuffer = (void *)(((uintptr_t)buffer + 4096 - 1) & ~(4096 - 1));
@@ -152,7 +153,7 @@ jit_error test_regs(void)
     // Preserve stack pointer so the JIT code does not crash on return
     jit_reg_new_fixed(s, JIT_REGMAP_SP); 
     r[0] = jit_reg_new_fixed(s, JIT_REGMAP_CALL_RET);
-    for(n = 0; n < 17; n++) {
+    for(n = 1; n < 17; n++) {
         r[n] = jit_reg_new(s);
     }
     MOVE_I_R(i[0], 0xdeadbeef, r[0], JIT_32BIT);
@@ -173,16 +174,9 @@ jit_error test_regs(void)
     __asm__("pushq %rbx\npushq %rbp\npushq %rdi\npushq %rsi\n");
     ((p_fn)abuffer)();
     __asm__("popq %rsi\npopq %rdi\npopq %rbp\npopq %rbx\nmovl %eax,-0x24(%rbp)");
-    printf("@ expected return %d\n", 0xdeadbeef); 
+    printf("@ expected return 0x%x\n", 0xdeadbeef); 
     e = (res == 0xdeadbeef) ? JIT_SUCCESS : JIT_ERROR_UNKNOWN;
-    printf("@ jit code returned %d!\n", res);
-
-    // Dump the code buffer for post-mortem analysis
-    {
-        FILE *f = fopen("./codebuf.o", "wb");
-        fwrite(abuffer, 1, s->blk_nb, f);
-        fclose(f);
-    }
+    printf("@ jit code returned 0x%x!\n", res);
 
     free(buffer);
     jit_destroy(s);

@@ -250,7 +250,7 @@ jit_get_mapped_host_reg(struct jit_state *s, jit_reg reg, jit_reg_access a)
             if(regmap[n] == JIT_REG_INVALID) {
                 regmap[n] = reg;
                 hostreg = n;
-                printf("vreg %d not mapped, using %s (host reg %d)\n",
+                printf("    vreg %d not mapped, using %s (host reg %d)\n",
                         reg, g_hostregsz[n], n);
                 goto l_spillcheck;
             }
@@ -276,7 +276,7 @@ jit_get_mapped_host_reg(struct jit_state *s, jit_reg reg, jit_reg_access a)
             s->p_emitter->spill_busy |= (1 << evicted);
             regmap[oldest] = reg;
             hostreg = oldest;
-            printf("vreg %d in %s (host reg %d): need evict/spill vreg %d\n",
+            printf("    vreg %d in %s (host reg %d): need evict/spill vreg %d\n",
                     reg, g_hostregsz[hostreg], hostreg, evicted);
         }
     }
@@ -285,7 +285,7 @@ l_spillcheck:
         goto l_exit;
     }
     if(reg < NUM_SPILL_SLOTS && s->p_emitter->spill_busy & (1 << reg)) {
-        printf("vreg %d was spilled, restoring\n", reg);
+        printf("    vreg %d was spilled, restoring\n", reg);
         s->p_bufcur = jit_emit__mov_m32_to_reg(s->p_bufcur,
                 (int32_t *)&spill[reg], hostreg);
         s->p_emitter->spill_busy &= ~(1 << reg);
@@ -385,7 +385,7 @@ jit_emit_move(struct jit_state *s, struct jit_instr *i)
         if(i->out_type == JIT_OPERAND_REG) {
             hostreg_out = jit_get_mapped_host_reg(s, i->out.reg, JIT_ACCESS_W);
             if(hostreg_out == JIT_HOST_REG_INVALID) {
-                fprintf(stderr, "jit reg. %d does not map to host reg.\n",
+                fprintf(stderr, "error: jit reg. %d does not map to host reg.\n",
                         i->out.reg);
             }
             s->p_bufcur = jit_emit__mov_imm32_to_reg(s->p_bufcur,
@@ -394,6 +394,10 @@ jit_emit_move(struct jit_state *s, struct jit_instr *i)
     } else if(i->in1_type == JIT_OPERAND_REG) {
         hostreg_in = jit_get_mapped_host_reg(s, i->in1.reg, JIT_ACCESS_R);
         if(i->out_type == JIT_OPERAND_REG) {
+            // Move to self; we can short-circuit this
+            if(i->out.reg == i->in1.reg) {
+                goto l_exit;
+            }
             hostreg_out = jit_get_mapped_host_reg(s, i->out.reg, JIT_ACCESS_W);
             s->p_bufcur = jit_emit__mov_reg_to_reg(s->p_bufcur,
                     hostreg_in, hostreg_out);
