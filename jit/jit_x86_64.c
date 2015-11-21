@@ -280,10 +280,11 @@ l_spillcheck:
         s->p_bufcur = jit_emit__mov_m32_to_reg(s->p_bufcur,
                 (int32_t *)&spill[reg], hostreg);
         s->p_emitter->spill_busy &= ~(1 << reg);
+        s->p_emitter->host_agemap[hostreg] = 0;
     } else if(reg >= NUM_SPILL_SLOTS) {
         printf("error: could not check spill, too many vregs\n");
     }
-printf("busymap: %08x\n", s->p_emitter->host_busy);
+
 l_exit:
     return hostreg;
 }
