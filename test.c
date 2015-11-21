@@ -14,6 +14,7 @@ int dummyfn3(int a, int b, int c) { return (a + b + c); }
 
 jit_error test_call(void);
 jit_error test_move(void);
+jit_error test_regs(void);
 
 #define NUM_INSTRS 5
 
@@ -24,6 +25,8 @@ int main(int argc, char *argv[])
     printf("---- test_call() %s\n\n", SUCCESS(e) ? "pass!" : "fail");
     e = (test_move());
     printf("---- test_move() %s\n\n", SUCCESS(e) ? "pass!" : "fail");
+    e = (test_regs());
+    printf("---- test_regs() %s\n\n", SUCCESS(e) ? "pass!" : "fail");
 l_exit:
     return e;
 }
@@ -118,6 +121,57 @@ jit_error test_move(void)
     printf("@ expected return %d\n", dummyfn3(1, 10, 100));
     e = (res == dummyfn3(1, 10, 100)) ? JIT_SUCCESS : JIT_ERROR_UNKNOWN;
     printf("@ jit code returned %d\n", res);
+
+    free(buffer);
+    jit_destroy(s);
+
+    return e;
+}
+
+jit_error test_regs(void)
+{
+#undef NUM_INSTRS
+#define NUM_INSTRS 19
+    jit_state *s;
+    jit_error e = JIT_SUCCESS;
+    struct jit_instr *i[NUM_INSTRS];
+    jit_reg r[17];
+
+    void *buffer = NULL;
+    void *abuffer = NULL;
+    size_t n = 0;
+    
+    printf("-- test_regs\n");
+    e = jit_create(&s, JIT_FLAG_NONE);
+    buffer = malloc(8192* sizeof(uint8_t));
+    abuffer = (void *)(((uintptr_t)buffer + 4096 - 1) & ~(4096 - 1));
+    for(n = 0; n < NUM_INSTRS; n++) {
+        i[n] = jit_instr_new(s);
+    }
+    // Preserve stack pointer so the JIT code does not crash on return
+    jit_reg r_rsp = jit_reg_new_fixed(s, JIT_REGMAP_SP); 
+    for(n = 0; n < 17; n++) {
+        r[n] = jit_reg_new(s);
+    }
+    MOVE_I_R(i[0], 0xdeadbeef, r[0], JIT_32BIT);
+    for(n = 1; n < NUM_INSTRS - 1; n++) {
+        MOVE_R_R(i[n], r[n-1], r[n], JIT_32BIT);
+    }
+    MOVE_R_R(i[17], r[1], r[0], JIT_32BIT);
+    RET(i[18]);
+
+    jit_begin_block(s, abuffer);
+    for(n = 0; n < NUM_INSTRS; n++) {
+        jit_emit_instr(s, i[n]);
+    }
+    jit_end_block(s);
+
+    mprotect(abuffer, 4096, PROT_READ | PROT_WRITE | PROT_EXEC);
+    printf("executing code at %p\n", abuffer);
+    __asm__("pushq %rbx\npushq %rbp\npushq %rdi\npushq %rsi\n");
+    ((p_fn)abuffer)();
+    __asm__("popq %rsi\npopq %rdi\npopq %rbp\npopq %rbx\n");
+    printf("@ jit code did not crash!\n");
 
     free(buffer);
     jit_destroy(s);

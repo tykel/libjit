@@ -32,6 +32,7 @@ extern "C" {
 #define FAILPATH(err) {e=(err);goto l_exit;}
 
 #define NUM_HOST_REGS 16
+#define NUM_SPILL_SLOTS 32
 
 enum e_jit_host_reg {
     JIT_HOST_REG_INVALID = -1,
@@ -48,6 +49,9 @@ struct jit_emitter {
     jit_reg host_regmap[NUM_HOST_REGS];
     jit_reg_age host_agemap[NUM_HOST_REGS];
     uint32_t host_busy;
+
+    int64_t spill_vreg[NUM_SPILL_SLOTS];
+    uint32_t spill_busy;
 };
 
 /* A variant of jit_pointer using host registers. */
@@ -196,7 +200,18 @@ jit_set_reg_mapping(struct jit_state *s, jit_reg reg, int32_t map)
         JIT_SUCCESS : JIT_ERROR_REG_BUSY;
     if(e == JIT_SUCCESS) {
         s->p_emitter->host_regmap[g_regmap[map]] = reg;
-        s->p_emitter->host_busy |= (1 << reg);
+        s->p_emitter->host_busy |= (1 << g_regmap[map]);
+    }
+    return e;
+}
+
+jit_error
+jit_clear_reg_mapping(struct jit_state *s, jit_reg reg)
+{
+    jit_error e = (reg != JIT_REG_INVALID) ?
+        JIT_SUCCESS : JIT_ERROR_VREG_INVALID;
+    if(e == JIT_SUCCESS) {
+        s->p_emitter->host_busy &= ~(1 << reg);
     }
     return e;
 }
@@ -209,13 +224,17 @@ jit_get_mapped_host_reg(struct jit_state *s, jit_reg reg)
     jit_reg *regmap = s->p_emitter->host_regmap;
     jit_reg_age *agemap = s->p_emitter->host_agemap;
     jit_reg evicted = JIT_REG_INVALID;
+    int64_t *spill = s->p_emitter->spill_vreg;
     
     if(reg == JIT_REG_INVALID) {
         goto l_exit;
     }
+
+    // First, check if virtual register is already mapped to a host reg.
     for(n = 0; n < NUM_HOST_REGS; n++) {
         if(regmap[n] == reg) {
             hostreg = n;
+            goto l_exit;
         }
     }
 
@@ -227,13 +246,13 @@ jit_get_mapped_host_reg(struct jit_state *s, jit_reg reg)
                 hostreg = n;
                 printf("vreg %d not mapped, using %s (host reg %d)\n",
                         reg, g_hostregsz[n], n);
-                break;
+                goto l_spillcheck;
             }
         }
     }
 
     // All the slots are taken: evict the oldest one, if they are not all
-    // mapped to specific slots
+    // mapped to specific slots, and spill it so its value is saved
     if(hostreg == JIT_HOST_REG_INVALID) {
         int oldest = -1;
         int maxage = -1;
@@ -246,15 +265,47 @@ jit_get_mapped_host_reg(struct jit_state *s, jit_reg reg)
         }
         if(oldest != -1) {
             evicted = regmap[oldest];
+            s->p_bufcur = jit_emit__mov_reg_to_m32(s->p_bufcur, oldest,
+                    (int32_t *)&spill[evicted]);
+            s->p_emitter->spill_busy |= (1 << evicted);
             regmap[oldest] = reg;
             hostreg = oldest;
-            printf("vreg %d in %s (host reg %d) by evicting vreg %d\n",
+            printf("vreg %d in %s (host reg %d): need evict/spill vreg %d\n",
                     reg, g_hostregsz[hostreg], hostreg, evicted);
         }
     }
-
+l_spillcheck:
+    if(reg < NUM_SPILL_SLOTS && s->p_emitter->spill_busy & (1 << reg)) {
+        printf("vreg %d was spilled, restoring\n", reg);
+        s->p_bufcur = jit_emit__mov_m32_to_reg(s->p_bufcur,
+                (int32_t *)&spill[reg], hostreg);
+        s->p_emitter->spill_busy &= ~(1 << reg);
+    } else if(reg >= NUM_SPILL_SLOTS) {
+        printf("error: could not check spill, too many vregs\n");
+    }
+printf("busymap: %08x\n", s->p_emitter->host_busy);
 l_exit:
     return hostreg;
+}
+
+jit_error
+jit_inc_reg_ages(struct jit_state *s, struct jit_instr *i)
+{
+    jit_error e = JIT_SUCCESS;
+    size_t n;
+
+    for(n = 0; n < NUM_HOST_REGS; n++) {
+        jit_reg vreg = s->p_emitter->host_regmap[n];
+        if((i->in1_type == JIT_OPERAND_REG && i->in1.reg == vreg) ||
+                (i->in2_type == JIT_OPERAND_REG && i->in2.reg == vreg) ||
+                (i->out_type == JIT_OPERAND_REG && i->out.reg == vreg)) {
+            s->p_emitter->host_agemap[n] = 0;
+        } else {
+            s->p_emitter->host_agemap[n] += 1;
+        }
+    }
+
+    return e;
 }
 
 struct jit_host_ptr
@@ -307,6 +358,7 @@ jit_emit_instr(struct jit_state *s, struct jit_instr *i)
             printf("error: emitter cannot handle op type %d\n", i->op);
             break;
     }
+    jit_inc_reg_ages(s, i);
     return e;
 }
 

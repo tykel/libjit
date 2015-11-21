@@ -93,6 +93,7 @@ enum e_jit_errors {
     JIT_ERROR_MALLOC,
     JIT_ERROR_VREG_NOT_FOUND,
     JIT_ERROR_REG_BUSY,
+    JIT_ERROR_VREG_INVALID,
     JIT_MAX,
 };
 
