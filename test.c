@@ -140,6 +140,7 @@ jit_error test_regs(void)
     void *buffer = NULL;
     void *abuffer = NULL;
     size_t n = 0;
+    int res = -1;
     
     printf("-- test_regs\n");
     e = jit_create(&s, JIT_FLAG_NONE);
@@ -149,7 +150,8 @@ jit_error test_regs(void)
         i[n] = jit_instr_new(s);
     }
     // Preserve stack pointer so the JIT code does not crash on return
-    jit_reg r_rsp = jit_reg_new_fixed(s, JIT_REGMAP_SP); 
+    jit_reg_new_fixed(s, JIT_REGMAP_SP); 
+    r[0] = jit_reg_new_fixed(s, JIT_REGMAP_CALL_RET);
     for(n = 0; n < 17; n++) {
         r[n] = jit_reg_new(s);
     }
@@ -170,8 +172,17 @@ jit_error test_regs(void)
     printf("executing code at %p\n", abuffer);
     __asm__("pushq %rbx\npushq %rbp\npushq %rdi\npushq %rsi\n");
     ((p_fn)abuffer)();
-    __asm__("popq %rsi\npopq %rdi\npopq %rbp\npopq %rbx\n");
-    printf("@ jit code did not crash!\n");
+    __asm__("popq %rsi\npopq %rdi\npopq %rbp\npopq %rbx\nmovl %eax,-0x24(%rbp)");
+    printf("@ expected return %d\n", 0xdeadbeef); 
+    e = (res == 0xdeadbeef) ? JIT_SUCCESS : JIT_ERROR_UNKNOWN;
+    printf("@ jit code returned %d!\n", res);
+
+    // Dump the code buffer for post-mortem analysis
+    {
+        FILE *f = fopen("./codebuf.o", "wb");
+        fwrite(abuffer, 1, s->blk_nb, f);
+        fclose(f);
+    }
 
     free(buffer);
     jit_destroy(s);
