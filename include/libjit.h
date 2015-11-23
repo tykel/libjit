@@ -76,6 +76,12 @@ typedef uint32_t jit_error;
 typedef size_t jit_label;
 
 
+#define BOLD(x) "\x1b[1m"x"\x1b[0m"
+#define GRAY(x) "\x1b[90m"x"\x1b[0m"
+#define GREEN(x) "\x1b[1;32m"x"\x1b[0m"
+#define REDBOLD(x) "\x1b[1;37m\x1b[41m"x"\x1b[0m"
+#define UL(x) "\x1b[4;37m"x"\x1b[0m"
+
 /* Currently only x86_64 is supported.
  * We only enumerate other targets for potential future usage. */
 enum e_jit_targets {
@@ -152,15 +158,16 @@ enum e_jit_op {
     JIT_OP_DIV  = 5,
     JIT_OP_SHL  = 6,
     JIT_OP_SHR  = 7, 
-    JIT_OP_AND  = 8,
-    JIT_OP_OR   = 9,
-    JIT_OP_XOR  = 10,
-    JIT_OP_CALL = 11,
-    JIT_OP_JUMP = 12,
-    JIT_OP_JUMP_IF = 13,
-    JIT_OP_RET  = 14,
-    JIT_OP_PUSH = 15,
-    JIT_OP_POP  = 16,
+    JIT_OP_SAR  = 8, 
+    JIT_OP_AND  = 9,
+    JIT_OP_OR   = 10,
+    JIT_OP_XOR  = 11,
+    JIT_OP_CALL = 12,
+    JIT_OP_JUMP = 13,
+    JIT_OP_JUMP_IF = 14,
+    JIT_OP_RET  = 15,
+    JIT_OP_PUSH = 16,
+    JIT_OP_POP  = 17,
     
     JIT_NUM_OPS,
 };
@@ -269,6 +276,10 @@ enum e_jit_opsz {
 #define AND_I_R_R(i,a,b,c,s) OP_I_R_R((i),JIT_OP_AND,(a),(b),(c),(s))
 #define XOR_R_R_R(i,a,b,c,s) OP_R_R_R((i),JIT_OP_XOR,(a),(b),(c),(s))
 #define XOR_I_R_R(i,a,b,c,s) OP_I_R_R((i),JIT_OP_XOR,(a),(b),(c),(s))
+#define OR_R_R_R(i,a,b,c,s) OP_R_R_R((i),JIT_OP_OR,(a),(b),(c),(s))
+#define SHR_I_R_R(i,a,b,c,s) OP_I_R_R((i),JIT_OP_SHR,(a),(b),(c),(s))
+#define SAR_I_R_R(i,a,b,c,s) OP_I_R_R((i),JIT_OP_SAR,(a),(b),(c),(s))
+#define SHL_I_R_R(i,a,b,c,s) OP_I_R_R((i),JIT_OP_SHL,(a),(b),(c),(s))
 
 
 struct jit_emitter;
@@ -291,9 +302,9 @@ struct jit_state {
     struct jit_instr *p_icur;
 
     /* Internal book-keeping. */
-    struct jit_instr *__g_pipool;
-    size_t __g_nipool;
-    size_t __g_nicur;
+    struct jit_instr *p_ipool;
+    size_t nipool;
+    size_t nicur;
 
     struct jit_emitter *p_emitter;
 };
@@ -342,6 +353,8 @@ jit_error jit_destroy_emitter(struct jit_state *s);
 
 /* Return start and end of a register's liveness (or life). */
 jit_error jit_reg_life(struct jit_state *s, jit_reg reg, size_t *start, size_t *end);
+
+jit_error jit_emit_all(struct jit_state *s);
 
 jit_error jit_emit_instr(struct jit_state *s, struct jit_instr *i);
 

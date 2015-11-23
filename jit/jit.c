@@ -49,12 +49,12 @@ jit_create(struct jit_state **s, jit_flags flags)
         FAILPATH(JIT_ERROR_MALLOC);
     }
 
-    (*s)->__g_pipool = (struct jit_instr *) calloc(__JIT_POOL_ALLOC,
+    (*s)->p_ipool = (struct jit_instr *) calloc(__JIT_POOL_ALLOC,
             sizeof(struct jit_instr));
-    if((*s)->__g_pipool == NULL) {
+    if((*s)->p_ipool == NULL) {
         FAILPATH(JIT_ERROR_MALLOC);
     }
-    (*s)->__g_nipool = __JIT_POOL_ALLOC;
+    (*s)->nipool = __JIT_POOL_ALLOC;
 
     e = jit_create_emitter(*s);
 
@@ -66,7 +66,7 @@ jit_error
 jit_destroy(struct jit_state *s)
 {
     jit_destroy_emitter(s);
-    free(s->__g_pipool);
+    free(s->p_ipool);
     free(s);
 
     return JIT_SUCCESS;
@@ -99,21 +99,21 @@ jit_instr_new(struct jit_state *s)
     struct jit_instr *i = NULL;
 
     // Grow the pool if needed.
-    if(s->__g_nicur == s->__g_nipool) {
-        s->__g_nipool += __JIT_POOL_ALLOC;
-        s->__g_pipool = (struct jit_instr *) realloc(s->__g_pipool,
-                s->__g_nipool * __JIT_POOL_ALLOC);
-        if(s->__g_pipool == NULL) {
+    if(s->nicur == s->nipool) {
+        s->nipool += __JIT_POOL_ALLOC;
+        s->p_ipool = (struct jit_instr *) realloc(s->p_ipool,
+                s->nipool * __JIT_POOL_ALLOC);
+        if(s->p_ipool == NULL) {
             goto l_exit;
         }
     }
 
     //printf("creating instr %zu\n", s->blk_ni);
-    i = &s->__g_pipool[s->__g_nicur];
+    i = &s->p_ipool[s->nicur];
     if(s->p_icur) {
         s->p_icur->next = i; 
     }
-    s->__g_nicur++;
+    s->nicur++;
     s->blk_ni++;
     
     if(s->blk_is == NULL) {
@@ -139,7 +139,7 @@ jit_begin_block(struct jit_state *s, void *buf)
 
     s->p_bufstart = s->p_bufcur = (uint8_t *) buf;
     s->blk_ni = s->blk_nb = 0;
-    s->blk_is = s->__g_pipool;
+    s->blk_is = s->p_ipool;
     
     return e;
 }
@@ -193,6 +193,22 @@ jit_reg_life(struct jit_state *s, jit_reg reg, size_t *start,
     printf("register %d: live from insn %zu to %zu\n", reg, first, last);
 
 l_exit:
+    return e;
+}
+
+jit_error
+jit_emit_all(struct jit_state *s)
+{
+    jit_error e = JIT_SUCCESS;
+    struct jit_instr *i = s->blk_is;
+
+    while(i != NULL) {
+        e = jit_emit_instr(s, i);
+        if(e != JIT_SUCCESS) {
+            break;
+        }
+        i = i->next;
+    }
     return e;
 }
 
